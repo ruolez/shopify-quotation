@@ -10,7 +10,8 @@ const state = {
     orders: [],
     selectedOrders: new Set(),
     validatedOrders: new Map(), // order_id -> validation result
-    currentTransferOrder: null // {orderId, orderName} for single order transfer
+    currentTransferOrder: null, // {orderId, orderName} for single order transfer
+    showTransferred: false // Show/hide transferred orders
 };
 
 // DOM Elements
@@ -29,6 +30,7 @@ const elements = {
     clearSelection: document.getElementById('clearSelection'),
     searchOrders: document.getElementById('searchOrders'),
     clearSearch: document.getElementById('clearSearch'),
+    showTransferred: document.getElementById('showTransferred'),
     totalOrders: document.getElementById('totalOrders'),
     pendingOrders: document.getElementById('pendingOrders'),
     transferredOrders: document.getElementById('transferredOrders')
@@ -84,6 +86,7 @@ function setupEventListeners() {
         elements.searchOrders.value = '';
         handleSearch();
     });
+    elements.showTransferred.addEventListener('change', handleShowTransferredToggle);
 
     // Modal listeners
     document.getElementById('closeValidationModal').addEventListener('click', closeValidationModal);
@@ -159,12 +162,17 @@ function renderOrders() {
     const tbody = elements.ordersTableBody;
     tbody.innerHTML = '';
 
-    if (state.orders.length === 0) {
+    // Filter orders based on showTransferred state
+    const filteredOrders = state.showTransferred
+        ? state.orders
+        : state.orders.filter(order => !order.transferred);
+
+    if (filteredOrders.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" class="text-center">No orders found</td></tr>';
         return;
     }
 
-    state.orders.forEach(order => {
+    filteredOrders.forEach(order => {
         const row = createOrderRow(order);
         tbody.appendChild(row);
     });
@@ -303,6 +311,16 @@ function handleSearch() {
         const text = row.textContent.toLowerCase();
         row.style.display = text.includes(query) ? '' : 'none';
     });
+}
+
+function handleShowTransferredToggle() {
+    state.showTransferred = elements.showTransferred.checked;
+    renderOrders();
+
+    // Re-apply search filter if there's an active search
+    if (elements.searchOrders.value) {
+        handleSearch();
+    }
 }
 
 // ============================================================================

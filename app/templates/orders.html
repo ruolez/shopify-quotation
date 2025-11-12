@@ -12,7 +12,7 @@
     <header class="header">
         <div class="header-content">
             <div class="header-left">
-                <h1>📦 Shopify Quotation Transfer</h1>
+                <h1>Shopify Quotation Transfer</h1>
                 <nav class="nav-links">
                     <a href="/" class="nav-link active">Orders</a>
                     <a href="/history" class="nav-link">History</a>
@@ -42,10 +42,14 @@
                     <input type="text" id="searchOrders" placeholder="Search orders...">
                     <button class="search-clear" id="clearSearch">&times;</button>
                 </div>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="showTransferred">
+                    <span>Show Transferred</span>
+                </label>
             </div>
             <div class="toolbar-actions">
                 <button class="btn btn-secondary" id="refreshOrders">
-                    🔄 Refresh
+                    Refresh
                 </button>
                 <button class="btn btn-primary" id="transferSelected" disabled>
                     ➜ Transfer Selected
