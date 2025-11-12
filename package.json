@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@shopify/dev-mcp": "^1.4.1"
+  }
+}

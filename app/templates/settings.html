@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#ffffff">
+    <title>Settings - Quotation Transfer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Header with Navigation -->
+    <header class="header">
+        <div class="header-content">
+            <div class="header-left">
+                <h1>⚙️ Settings</h1>
+                <nav class="nav-links">
+                    <a href="/" class="nav-link">Orders</a>
+                    <a href="/history" class="nav-link">History</a>
+                    <a href="/settings" class="nav-link active">Settings</a>
+                </nav>
+            </div>
+            <div class="header-right">
+                <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+                    <span class="theme-toggle-slider"></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Section 1: Shopify Stores -->
+        <div class="card">
+            <h2>🛍️ Shopify Stores</h2>
+            <p class="text-secondary">Manage your Shopify store connections</p>
+
+            <!-- Stores List -->
+            <div id="storesContainer" class="mt-3">
+                <!-- Stores will be inserted here -->
+            </div>
+
+            <!-- Add Store Button -->
+            <button class="btn btn-primary mt-3" id="addStoreBtn">
+                ➕ Add Store
+            </button>
+        </div>
+
+        <!-- Section 2: SQL Server Connections -->
+        <div class="card mt-3">
+            <h2>🗄️ SQL Server Connections</h2>
+            <p class="text-secondary">Configure BackOffice and Inventory database connections</p>
+
+            <!-- BackOffice Database -->
+            <div class="mt-3">
+                <h3>BackOffice Database</h3>
+                <form id="backofficeForm">
+                    <div class="form-group">
+                        <label for="backoffice_host">Host</label>
+                        <input type="text" id="backoffice_host" placeholder="localhost or IP address">
+                    </div>
+                    <div class="form-group">
+                        <label for="backoffice_port">Port</label>
+                        <input type="number" id="backoffice_port" placeholder="1433" value="1433">
+                    </div>
+                    <div class="form-group">
+                        <label for="backoffice_database">Database Name</label>
+                        <input type="text" id="backoffice_database" placeholder="BackOffice">
+                    </div>
+                    <div class="form-group">
+                        <label for="backoffice_username">Username</label>
+                        <input type="text" id="backoffice_username" placeholder="sa">
+                    </div>
+                    <div class="form-group">
+                        <label for="backoffice_password">Password</label>
+                        <input type="password" id="backoffice_password" placeholder="Enter password">
+                    </div>
+                    <div class="form-group">
+                        <button type="button" class="btn btn-secondary" id="testBackofficeBtn">
+                            🔌 Test Connection
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            💾 Save BackOffice Config
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Inventory Database -->
+            <div class="mt-3">
+                <h3>Inventory Database</h3>
+                <form id="inventoryForm">
+                    <div class="form-group">
+                        <label for="inventory_host">Host</label>
+                        <input type="text" id="inventory_host" placeholder="localhost or IP address">
+                    </div>
+                    <div class="form-group">
+                        <label for="inventory_port">Port</label>
+                        <input type="number" id="inventory_port" placeholder="1433" value="1433">
+                    </div>
+                    <div class="form-group">
+                        <label for="inventory_database">Database Name</label>
+                        <input type="text" id="inventory_database" placeholder="Inventory">
+                    </div>
+                    <div class="form-group">
+                        <label for="inventory_username">Username</label>
+                        <input type="text" id="inventory_username" placeholder="sa">
+                    </div>
+                    <div class="form-group">
+                        <label for="inventory_password">Password</label>
+                        <input type="password" id="inventory_password" placeholder="Enter password">
+                    </div>
+                    <div class="form-group">
+                        <button type="button" class="btn btn-secondary" id="testInventoryBtn">
+                            🔌 Test Connection
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            💾 Save Inventory Config
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Section 3: Customer Mappings -->
+        <div class="card mt-3">
+            <h2>👥 Customer Mappings</h2>
+            <p class="text-secondary">Map each Shopify store to a BackOffice customer</p>
+
+            <div id="customerMappingsContainer" class="mt-3">
+                <!-- Customer mappings will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Section 4: Quotation Defaults -->
+        <div class="card mt-3">
+            <h2>📋 Quotation Defaults</h2>
+            <p class="text-secondary">Set default values for quotations per store</p>
+
+            <div id="quotationDefaultsContainer" class="mt-3">
+                <!-- Quotation defaults will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Store Modal -->
+    <div class="modal-overlay" id="storeModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="storeModalTitle">Add Shopify Store</h2>
+            </div>
+            <div class="modal-body">
+                <form id="storeForm">
+                    <input type="hidden" id="store_id">
+                    <div class="form-group">
+                        <label for="store_name">Store Name</label>
+                        <input type="text" id="store_name" placeholder="My Shopify Store" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="shop_url">Shop URL</label>
+                        <input type="text" id="shop_url" placeholder="mystore.myshopify.com" required>
+                        <small>Enter your shop URL (without https://)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="api_token">Admin API Access Token</label>
+                        <input type="password" id="api_token" placeholder="shpat_..." required>
+                        <small>Create a custom app in Shopify Admin to get this token</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelStoreModal">Cancel</button>
+                <button class="btn btn-primary" id="saveStore">Save Store</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Confirm Action</h2>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelConfirm">Cancel</button>
+                <button class="btn btn-error" id="confirmAction">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="/static/js/theme.js"></script>
+    <script src="/static/js/settings.js"></script>
+</body>
+</html>

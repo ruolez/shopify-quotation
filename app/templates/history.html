@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#ffffff">
+    <title>History - Quotation Transfer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Header with Navigation -->
+    <header class="header">
+        <div class="header-content">
+            <div class="header-left">
+                <h1>📜 Transfer History</h1>
+                <nav class="nav-links">
+                    <a href="/" class="nav-link">Orders</a>
+                    <a href="/history" class="nav-link active">History</a>
+                    <a href="/settings" class="nav-link">Settings</a>
+                </nav>
+            </div>
+            <div class="header-right">
+                <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+                    <span class="theme-toggle-slider"></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Filters -->
+        <div class="history-filters">
+            <div class="filter-group">
+                <label for="storeFilter">Store</label>
+                <select id="storeFilter">
+                    <option value="">All Stores</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="statusFilter">Status</label>
+                <select id="statusFilter">
+                    <option value="all">All</option>
+                    <option value="success">Success</option>
+                    <option value="failed">Failed</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="startDate">Start Date</label>
+                <input type="date" id="startDate">
+            </div>
+
+            <div class="filter-group">
+                <label for="endDate">End Date</label>
+                <input type="date" id="endDate">
+            </div>
+
+            <div class="filter-actions">
+                <button class="btn btn-secondary" id="applyFilters">
+                    🔍 Apply
+                </button>
+                <button class="btn btn-secondary" id="clearFilters">
+                    ✕ Clear
+                </button>
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="history-stats">
+            <div class="stat-card">
+                <span class="stat-value" id="totalTransfers">0</span>
+                <span class="stat-label">Total Transfers</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value text-success" id="successCount">0</span>
+                <span class="stat-label">Successful</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value text-error" id="failedCount">0</span>
+                <span class="stat-label">Failed</span>
+            </div>
+        </div>
+
+        <!-- Actions Toolbar -->
+        <div class="toolbar">
+            <div class="toolbar-search">
+                <div class="search-box search-box-product">
+                    <input type="text" id="searchHistory" placeholder="Search history...">
+                    <button class="search-clear" id="clearSearch">&times;</button>
+                </div>
+            </div>
+            <div class="toolbar-actions">
+                <button class="btn btn-secondary" id="refreshHistory">
+                    🔄 Refresh
+                </button>
+                <button class="btn btn-error" id="deleteSelected" disabled>
+                    🗑️ Delete Selected
+                </button>
+                <button class="btn btn-error" id="deleteAllFailed">
+                    🗑️ Delete All Failed
+                </button>
+            </div>
+        </div>
+
+        <!-- Selection Summary -->
+        <div class="active-filters-bar" id="selectionSummary" style="display: none;">
+            <div class="active-filters-content">
+                <span class="active-filters-label">SELECTED:</span>
+                <span id="selectionCount">0 records</span>
+            </div>
+            <button class="btn-clear-all-filters" id="clearSelection">Clear Selection</button>
+        </div>
+
+        <!-- History Table -->
+        <div class="card">
+            <div class="table-container">
+                <table id="historyTable">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAll"></th>
+                            <th>Shopify Order</th>
+                            <th>Quotation #</th>
+                            <th>Store</th>
+                            <th>Items</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody">
+                        <!-- History records will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <div class="empty-state-icon">📜</div>
+            <h3>No History Records</h3>
+            <p>Transfer history will appear here</p>
+        </div>
+
+        <!-- Loading State -->
+        <div class="empty-state" id="loadingState" style="display: none;">
+            <div class="spinner" style="width: 48px; height: 48px;"></div>
+            <h3>Loading History...</h3>
+        </div>
+    </div>
+
+    <!-- Error Details Modal -->
+    <div class="modal-overlay" id="errorModal">
+        <div class="modal modal-large">
+            <div class="modal-header">
+                <h2>❌ Transfer Error Details</h2>
+            </div>
+            <div class="modal-body">
+                <div id="errorContent">
+                    <!-- Error details will be inserted here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="closeErrorModal">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Confirm Deletion</h2>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelConfirm">Cancel</button>
+                <button class="btn btn-error" id="confirmAction">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="/static/js/theme.js"></script>
+    <script src="/static/js/history.js"></script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: shopify-quotation-app
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./app:/app/app
+      - ./data:/app/data
+    environment:
+      - FLASK_APP=app.main:app
+      - FLASK_ENV=development
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=shopify_quotation
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin123
+      - ENCRYPTION_KEY=p3C56Fb0GL65El4Uw8ZAGcNNjFi0Y9kfG-876Jh82vs=
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - shopify-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: shopify-quotation-postgres
+    environment:
+      - POSTGRES_DB=shopify_quotation
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./app/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "5433:5432"
+    restart: unless-stopped
+    networks:
+      - shopify-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  shopify-network:
+    driver: bridge

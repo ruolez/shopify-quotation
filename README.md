@@ -1,0 +1,443 @@
+# Shopify to BackOffice Quotation Transfer
+
+Modern web application for transferring Shopify orders to MS SQL Server quotations with intelligent product validation and dual-database lookup.
+
+## Overview
+
+This application automates the process of converting Shopify orders into BackOffice quotations by:
+- Fetching unfulfilled orders from multiple Shopify stores
+- Validating products against BackOffice and Inventory databases
+- Automatically copying missing products from Inventory to BackOffice
+- Creating quotations with proper customer mapping and defaults
+- Tracking transfer history with success/failure logging
+
+## Technology Stack
+
+- **Backend:** Python 3.11 + Flask
+- **Frontend:** HTML5, CSS3, Vanilla JavaScript
+- **Databases:**
+  - PostgreSQL: Application settings and transfer history
+  - MS SQL Server (BackOffice): Quotation system and product master
+  - MS SQL Server (Inventory): Product verification database
+- **Deployment:** Docker + Docker Compose
+- **UI Design:** Material Design 3 with dark/light theme support
+- **Port:** Auto-detects available port 5000-5100
+
+## Features
+
+### Order Management
+- View unfulfilled orders from the last 14 days
+- Multi-select orders for batch transfer
+- Real-time product validation before transfer
+- Automatic quotation number generation
+- Transfer status tracking
+
+### Product Validation (2-Database Lookup)
+1. Check BackOffice Items_tbl by barcode
+2. If not found, check Inventory Items_tbl
+3. If found in Inventory, automatically copy to BackOffice
+4. If not found in either, warn user and block transfer
+
+### Settings Configuration
+- **Shopify Stores:** Manage multiple store connections with API tokens
+- **SQL Connections:** Configure BackOffice and Inventory databases
+- **Customer Mappings:** Map each Shopify store to a BackOffice customer
+- **Quotation Defaults:** Set default values per store (Status, ShipperID, SalesRepID, TermID, title prefix, expiration days)
+
+### Transfer History
+- Filter by store, status, and date range
+- View error details for failed transfers
+- Bulk deletion support
+- Statistics dashboard (total, successful, failed)
+- Search functionality
+
+## Prerequisites
+
+- Docker 20.10+
+- Docker Compose 2.0+
+- Network access to:
+  - Shopify stores (HTTPS)
+  - MS SQL Server (BackOffice database)
+  - MS SQL Server (Inventory database)
+
+## Quick Start
+
+### 1. Clone and Build
+
+```bash
+cd /path/to/shopify\ quotation
+docker-compose up -d --build
+```
+
+The application will:
+- Start Flask app on first available port (5000-5100)
+- Initialize PostgreSQL with schema
+- Apply database migrations
+
+### 2. Access the Application
+
+```bash
+# Check which port was assigned
+docker-compose logs app | grep "Running on"
+
+# Access at http://localhost:PORT
+```
+
+Default: http://localhost:5000
+
+### 3. Initial Configuration
+
+Navigate to **Settings** page and configure in order:
+
+#### A. SQL Server Connections
+
+**BackOffice Database:**
+- Host: Your BackOffice SQL Server IP/hostname
+- Port: 1433 (default)
+- Database: BackOffice database name
+- Username: SQL Server username
+- Password: SQL Server password
+
+Click **Test Connection** to verify before saving.
+
+**Inventory Database:**
+- Host: Your Inventory SQL Server IP/hostname
+- Port: 1433 (default)
+- Database: Inventory database name
+- Username: SQL Server username
+- Password: SQL Server password
+
+Click **Test Connection** to verify before saving.
+
+#### B. Shopify Stores
+
+Click **Add Store** and provide:
+- **Store Name:** Friendly name (e.g., "Main Store")
+- **Shop URL:** Your shop domain (e.g., `mystore.myshopify.com`)
+- **Admin API Access Token:**
+  1. Go to Shopify Admin → Settings → Apps and sales channels
+  2. Click "Develop apps"
+  3. Create custom app with scopes: `read_orders`, `read_products`, `read_customers`
+  4. Install app and copy Admin API access token (starts with `shpat_`)
+
+Click **Test Connection** to verify before saving.
+
+#### C. Customer Mappings
+
+For each Shopify store:
+1. Select store from dropdown
+2. Choose corresponding BackOffice customer
+3. Click **Save Mapping**
+
+This determines which CustomerID will be used in quotations.
+
+#### D. Quotation Defaults
+
+For each Shopify store, configure:
+- **Status:** Default quotation status (e.g., "Pending")
+- **Shipper ID:** Default shipping method ID
+- **Sales Rep ID:** Default sales representative ID
+- **Term ID:** Default payment terms ID
+- **Title Prefix:** Text prepended to quotation title (e.g., "Shopify Order")
+- **Expiration Days:** Days until quotation expires (default: 365)
+
+## Usage Guide
+
+### Transferring Orders
+
+1. **Select Store:** Choose Shopify store from dropdown on Orders page
+2. **View Orders:** Unfulfilled orders from last 14 days will load
+3. **Validate Products (Optional):** Click **Validate** button on individual orders to check product availability
+   - ✓ Green badge: Product found in BackOffice
+   - 📋 Yellow badge: Product copied from Inventory to BackOffice
+   - ⚠️ Red badge: Product not found in either database (transfer blocked)
+4. **Select Orders:** Check boxes next to orders to transfer
+5. **Transfer:** Click **Transfer Selected** button
+6. **Review Results:** Toast notifications show success/failure for each order
+
+### Validation Results
+
+**Valid Products:**
+- Found in BackOffice Items_tbl
+- Ready for transfer
+
+**Copied Products:**
+- Not found in BackOffice
+- Found in Inventory Items_tbl
+- Automatically copied to BackOffice
+- Now ready for transfer
+
+**Missing Products:**
+- Not found in either database
+- Transfer blocked until product added to Inventory
+- Shows product name, barcode, and quantity needed
+
+### Viewing History
+
+Navigate to **History** page to:
+- View all transfer attempts
+- Filter by store, status, or date range
+- Search by order name or quotation number
+- Delete individual records
+- Bulk delete selected records
+- Delete all failed records
+
+Click **View Error** on failed transfers to see detailed error messages.
+
+## Database Schema
+
+### PostgreSQL Tables
+
+**shopify_stores:**
+- Stores Shopify API credentials (encrypted)
+- Fields: id, name, shop_url, api_token, is_active
+
+**sql_connections:**
+- BackOffice and Inventory connection details
+- Fields: id, connection_type, host, port, database, username, encrypted_password
+
+**customer_mappings:**
+- Maps Shopify store to BackOffice CustomerID
+- Fields: id, store_id, customer_id
+
+**quotation_defaults:**
+- Default values for quotation creation
+- Fields: store_id, status, shipper_id, sales_rep_id, term_id, title_prefix, expiration_days
+
+**transfer_history:**
+- Tracks all transfer attempts
+- Fields: id, store_id, shopify_order_id, shopify_order_name, quotation_number, status, error_message, line_items_count, total_amount, transferred_at
+
+### MS SQL Server Tables Used
+
+**BackOffice Database:**
+- `Quotations_tbl` - Quotation headers
+- `QuotationsDetails_tbl` - Quotation line items
+- `Items_tbl` - Product master data
+- `Customers_tbl` - Customer data
+
+**Inventory Database:**
+- `Items_tbl` - Product verification and copying source
+
+## API Endpoints
+
+### Pages
+- `GET /` - Orders page
+- `GET /history` - History page
+- `GET /settings` - Settings page
+
+### Shopify Stores
+- `GET /api/stores` - List all stores
+- `POST /api/stores` - Create store
+- `PUT /api/stores/<id>` - Update store
+- `DELETE /api/stores/<id>` - Delete store
+- `POST /api/stores/<id>/test` - Test connection
+
+### SQL Connections
+- `GET /api/sql-connections` - Get connections (without passwords)
+- `POST /api/sql-connections` - Save connection
+- `POST /api/sql-connections/test` - Test connection
+
+### Customer Mappings
+- `GET /api/customer-mappings/<store_id>` - Get mapping
+- `POST /api/customer-mappings` - Save mapping
+- `GET /api/customers` - List BackOffice customers
+
+### Quotation Defaults
+- `GET /api/quotation-defaults/<store_id>` - Get defaults
+- `POST /api/quotation-defaults` - Save defaults
+
+### Orders
+- `GET /api/orders?store_id=<id>&days_back=<days>` - Fetch orders
+- `POST /api/orders/validate` - Validate products
+- `POST /api/orders/transfer` - Transfer orders
+
+### History
+- `GET /api/history?store_id=<id>&status=<status>&start_date=<date>&end_date=<date>` - Get history
+- `DELETE /api/history/<id>` - Delete record
+- `POST /api/history/delete-failed` - Delete all failed records
+
+### Health
+- `GET /health` - Health check
+
+## Troubleshooting
+
+### Port Already in Use
+
+The application auto-detects ports 5000-5100. If all are taken:
+
+```bash
+# Edit docker-compose.yml
+ports:
+  - "6000:5000"  # Change to different port range
+```
+
+### SQL Server Connection Fails
+
+**Check network connectivity:**
+```bash
+docker-compose exec app bash
+ping <sql-server-host>
+```
+
+**Verify SQL Server accepts remote connections:**
+- SQL Server Configuration Manager → SQL Server Network Configuration → Protocols → TCP/IP → Enabled
+- SQL Server Configuration Manager → SQL Server Services → Restart SQL Server
+
+**Check firewall:**
+- Port 1433 must be open
+- Windows Firewall → Inbound Rules → New Rule → Port 1433
+
+### Shopify API Token Invalid
+
+**Verify token scopes:**
+- `read_orders` - Required for fetching orders
+- `read_products` - Required for product details
+- `read_customers` - Required for customer information
+
+**Regenerate token:**
+1. Shopify Admin → Settings → Apps and sales channels
+2. Develop apps → Click your app
+3. API credentials → Regenerate token
+
+### Products Not Found
+
+**Add to Inventory database first:**
+1. Validation shows which barcodes are missing
+2. Add products to Inventory Items_tbl
+3. Re-run validation
+4. Products will auto-copy to BackOffice
+
+### Transfer History Not Recording
+
+**Check PostgreSQL connection:**
+```bash
+docker-compose logs postgres
+docker-compose exec postgres psql -U shopify_user -d shopify_db
+```
+
+**Verify schema:**
+```sql
+\dt  -- List tables
+SELECT * FROM transfer_history LIMIT 5;
+```
+
+## Development
+
+### Local Development Mode
+
+```bash
+# Run with live reload
+docker-compose up --build
+
+# View logs
+docker-compose logs -f app
+
+# Access PostgreSQL
+docker-compose exec postgres psql -U shopify_user -d shopify_db
+
+# Access Flask shell
+docker-compose exec app bash
+```
+
+### Environment Variables
+
+Create `.env` file (optional):
+
+```env
+FLASK_ENV=development
+FLASK_DEBUG=1
+DATABASE_URL=postgresql://shopify_user:shopify_password@postgres:5432/shopify_db
+SECRET_KEY=your-secret-key-here
+```
+
+### Rebuilding After Code Changes
+
+```bash
+docker-compose down
+docker-compose up -d --build
+```
+
+## Security Notes
+
+- SQL Server passwords are encrypted using Fernet symmetric encryption
+- Passwords never returned in API responses (GET requests)
+- Shopify API tokens stored encrypted in PostgreSQL
+- No authentication layer (intended for internal network use)
+- Run behind reverse proxy (nginx) for production
+- Use HTTPS for production deployments
+- Restrict network access to trusted IPs
+
+## Backup and Maintenance
+
+### Backup PostgreSQL Data
+
+```bash
+docker-compose exec postgres pg_dump -U shopify_user shopify_db > backup.sql
+```
+
+### Restore PostgreSQL Data
+
+```bash
+cat backup.sql | docker-compose exec -T postgres psql -U shopify_user -d shopify_db
+```
+
+### Clear Transfer History
+
+Use the History page UI to delete records, or manually:
+
+```bash
+docker-compose exec postgres psql -U shopify_user -d shopify_db -c "DELETE FROM transfer_history WHERE status = 'failed';"
+```
+
+### View Application Logs
+
+```bash
+# All logs
+docker-compose logs
+
+# Follow logs
+docker-compose logs -f app
+
+# Last 100 lines
+docker-compose logs --tail=100 app
+```
+
+## Project Structure
+
+```
+shopify quotation/
+├── docker-compose.yml        # Docker orchestration
+├── Dockerfile               # Python 3.11 + FreeTDS
+├── requirements.txt         # Python dependencies
+├── README.md               # This file
+├── app/
+│   ├── __init__.py
+│   ├── main.py             # Flask app + 22 API endpoints
+│   ├── database.py         # PostgreSQL + MS SQL managers
+│   ├── shopify_client.py   # Shopify GraphQL client
+│   ├── validator.py        # Product validation logic
+│   ├── converter.py        # Order to quotation converter
+│   ├── schema.sql          # PostgreSQL schema
+│   ├── static/
+│   │   ├── css/
+│   │   │   └── style.css           # Material Design 3 styles
+│   │   └── js/
+│   │       ├── theme.js            # Dark/light theme manager
+│   │       ├── orders.js           # Orders page logic
+│   │       ├── settings.js         # Settings page logic
+│   │       └── history.js          # History page logic
+│   └── templates/
+│       ├── orders.html             # Orders page
+│       ├── settings.html           # Settings page
+│       └── history.html            # History page
+└── postgres_data/                  # PostgreSQL volume (gitignored)
+```
+
+## License
+
+Proprietary - Internal use only
+
+## Support
+
+For issues or questions, contact your system administrator.
