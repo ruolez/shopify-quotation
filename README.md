@@ -2,6 +2,21 @@
 
 Modern web application for transferring Shopify orders to MS SQL Server quotations with intelligent product validation and dual-database lookup.
 
+## Production Deployment
+
+**Quick Install on Ubuntu 24 LTS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ruolez/shopify-quotation/main/install.sh | sudo bash
+```
+
+The installer provides:
+- ✅ **Install** - Fresh installation with auto Docker setup
+- 🔄 **Update** - Pull latest changes from GitHub with data backup
+- 🗑️ **Remove** - Clean uninstall with data preservation
+
+Runs on **port 80** for production use. See [PRODUCTION.md](PRODUCTION.md) for complete deployment guide.
+
 ## Overview
 
 This application automates the process of converting Shopify orders into BackOffice quotations by:
@@ -16,12 +31,14 @@ This application automates the process of converting Shopify orders into BackOff
 - **Backend:** Python 3.11 + Flask
 - **Frontend:** HTML5, CSS3, Vanilla JavaScript
 - **Databases:**
-  - PostgreSQL: Application settings and transfer history
+  - SQLite: Application settings and transfer history (embedded)
   - MS SQL Server (BackOffice): Quotation system and product master
   - MS SQL Server (Inventory): Product verification database
 - **Deployment:** Docker + Docker Compose
 - **UI Design:** Material Design 3 with dark/light theme support
-- **Port:** Auto-detects available port 5000-5100
+- **Port:**
+  - Production: Port 80 (via install.sh)
+  - Development: Auto-detects available port 5000-5100
 
 ## Features
 
@@ -62,6 +79,24 @@ This application automates the process of converting Shopify orders into BackOff
 
 ## Quick Start
 
+### Production Installation (Ubuntu 24 LTS)
+
+Use the automated installer for production deployments:
+
+```bash
+# One-line install
+curl -fsSL https://raw.githubusercontent.com/ruolez/shopify-quotation/main/install.sh | sudo bash
+
+# Or download and run manually
+wget https://raw.githubusercontent.com/ruolez/shopify-quotation/main/install.sh
+chmod +x install.sh
+sudo ./install.sh
+```
+
+See [PRODUCTION.md](PRODUCTION.md) for complete production deployment guide.
+
+### Local Development
+
 ### 1. Clone and Build
 
 ```bash
@@ -71,8 +106,8 @@ docker-compose up -d --build
 
 The application will:
 - Start Flask app on first available port (5000-5100)
-- Initialize PostgreSQL with schema
-- Apply database migrations
+- Initialize SQLite database with schema
+- Create data directory for persistent storage
 
 ### 2. Access the Application
 
@@ -186,7 +221,7 @@ Click **View Error** on failed transfers to see detailed error messages.
 
 ## Database Schema
 
-### PostgreSQL Tables
+### SQLite Tables (app.db)
 
 **shopify_stores:**
 - Stores Shopify API credentials (encrypted)
@@ -207,6 +242,10 @@ Click **View Error** on failed transfers to see detailed error messages.
 **transfer_history:**
 - Tracks all transfer attempts
 - Fields: id, store_id, shopify_order_id, shopify_order_name, quotation_number, status, error_message, line_items_count, total_amount, transferred_at
+
+**Database Location:**
+- Development: `./data/app.db`
+- Production: `/opt/shopify-quotation/data/app.db`
 
 ### MS SQL Server Tables Used
 
@@ -310,16 +349,14 @@ ping <sql-server-host>
 
 ### Transfer History Not Recording
 
-**Check PostgreSQL connection:**
+**Check SQLite database:**
 ```bash
-docker-compose logs postgres
-docker-compose exec postgres psql -U shopify_user -d shopify_db
-```
+# Development
+docker-compose exec app bash
+sqlite3 /app/data/app.db "SELECT * FROM transfer_history LIMIT 5;"
 
-**Verify schema:**
-```sql
-\dt  -- List tables
-SELECT * FROM transfer_history LIMIT 5;
+# Production
+sqlite3 /opt/shopify-quotation/data/app.db "SELECT * FROM transfer_history LIMIT 5;"
 ```
 
 ## Development
@@ -333,8 +370,9 @@ docker-compose up --build
 # View logs
 docker-compose logs -f app
 
-# Access PostgreSQL
-docker-compose exec postgres psql -U shopify_user -d shopify_db
+# Access SQLite database
+docker-compose exec app bash
+sqlite3 /app/data/app.db
 
 # Access Flask shell
 docker-compose exec app bash
@@ -347,7 +385,6 @@ Create `.env` file (optional):
 ```env
 FLASK_ENV=development
 FLASK_DEBUG=1
-DATABASE_URL=postgresql://shopify_user:shopify_password@postgres:5432/shopify_db
 SECRET_KEY=your-secret-key-here
 ```
 
@@ -362,32 +399,57 @@ docker-compose up -d --build
 
 - SQL Server passwords are encrypted using Fernet symmetric encryption
 - Passwords never returned in API responses (GET requests)
-- Shopify API tokens stored encrypted in PostgreSQL
+- Shopify API tokens stored encrypted in SQLite
 - No authentication layer (intended for internal network use)
-- Run behind reverse proxy (nginx) for production
-- Use HTTPS for production deployments
+- Run behind reverse proxy (nginx) for production with HTTPS
 - Restrict network access to trusted IPs
+- Regular backups recommended (automated in production installer)
 
 ## Backup and Maintenance
 
-### Backup PostgreSQL Data
+### Backup SQLite Data
 
+**Development:**
 ```bash
-docker-compose exec postgres pg_dump -U shopify_user shopify_db > backup.sql
+cp ./data/app.db ./data/app.db.backup-$(date +%Y%m%d)
 ```
 
-### Restore PostgreSQL Data
-
+**Production:**
 ```bash
-cat backup.sql | docker-compose exec -T postgres psql -U shopify_user -d shopify_db
+# Automatic backups created during updates
+# Manual backup:
+sudo tar -czf ~/shopify-quotation-backup-$(date +%Y%m%d).tar.gz /opt/shopify-quotation/data/
+```
+
+### Restore SQLite Data
+
+**Development:**
+```bash
+cp ./data/app.db.backup-YYYYMMDD ./data/app.db
+docker-compose restart app
+```
+
+**Production:**
+```bash
+# Restore from backup
+sudo tar -xzf ~/shopify-quotation-backup-YYYYMMDD.tar.gz -C /
+cd /opt/shopify-quotation
+sudo docker compose restart
 ```
 
 ### Clear Transfer History
 
 Use the History page UI to delete records, or manually:
 
+**Development:**
 ```bash
-docker-compose exec postgres psql -U shopify_user -d shopify_db -c "DELETE FROM transfer_history WHERE status = 'failed';"
+docker-compose exec app bash
+sqlite3 /app/data/app.db "DELETE FROM transfer_history WHERE status = 'failed';"
+```
+
+**Production:**
+```bash
+sqlite3 /opt/shopify-quotation/data/app.db "DELETE FROM transfer_history WHERE status = 'failed';"
 ```
 
 ### View Application Logs
@@ -410,11 +472,13 @@ shopify quotation/
 ├── docker-compose.yml        # Docker orchestration
 ├── Dockerfile               # Python 3.11 + FreeTDS
 ├── requirements.txt         # Python dependencies
+├── install.sh              # Production installer (Ubuntu 24)
 ├── README.md               # This file
+├── PRODUCTION.md          # Production deployment guide
 ├── app/
 │   ├── __init__.py
 │   ├── main.py             # Flask app + 22 API endpoints
-│   ├── database.py         # PostgreSQL + MS SQL managers
+│   ├── database.py         # SQLite + MS SQL managers
 │   ├── shopify_client.py   # Shopify GraphQL client
 │   ├── validator.py        # Product validation logic
 │   ├── converter.py        # Order to quotation converter
@@ -431,7 +495,8 @@ shopify quotation/
 │       ├── orders.html             # Orders page
 │       ├── settings.html           # Settings page
 │       └── history.html            # History page
-└── postgres_data/                  # PostgreSQL volume (gitignored)
+└── data/                           # SQLite database (gitignored)
+    └── app.db                      # Application database
 ```
 
 ## License
