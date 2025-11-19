@@ -127,6 +127,7 @@ class ShopifyClient:
                             name
                             createdAt
                             displayFulfillmentStatus
+                            note
                             totalPriceSet {{
                                 shopMoney {{
                                     amount
@@ -236,6 +237,7 @@ class ShopifyClient:
             'name': order_node.get('name', ''),
             'created_at': order_node.get('createdAt', ''),
             'fulfillment_status': order_node.get('displayFulfillmentStatus', ''),
+            'note': order_node.get('note'),  # Staff note - can be None
             'total_amount': total_amount,
             'currency': currency,
             'customer': {
@@ -287,6 +289,7 @@ class ShopifyClient:
                     name
                     createdAt
                     displayFulfillmentStatus
+                    note
                     totalPriceSet {{
                         shopMoney {{
                             amount

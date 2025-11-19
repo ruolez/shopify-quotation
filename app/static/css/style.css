@@ -3072,3 +3072,53 @@ tfoot td {
   color: var(--primary);
   font-weight: 500;
 }
+
+/* ============================================================================
+   ORDER NOTES ICON & TOOLTIP
+   ============================================================================ */
+
+.note-icon {
+  cursor: pointer;
+  margin-left: 8px;
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  color: var(--on-surface);
+}
+
+.note-icon svg {
+  display: block;
+}
+
+.note-icon:hover {
+  opacity: 1;
+}
+
+.note-icon:hover::after {
+  content: attr(data-note);
+  position: absolute;
+  background: var(--surface);
+  color: var(--on-surface);
+  border: 1px solid var(--outline);
+  padding: 8px 12px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+  max-width: 600px;
+  overflow-x: auto;
+  z-index: 1000;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Dark mode support */
+[data-theme="dark"] .note-icon:hover::after {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}

@@ -193,7 +193,17 @@ function createOrderRow(order) {
                    ${isSelected ? 'checked' : ''}
                    ${!canSelect ? 'disabled' : ''}>
         </td>
-        <td><strong>${order.name}</strong></td>
+        <td>
+            <strong>${order.name}</strong>
+            ${order.note ? `<span class="note-icon" data-note="${escapeHtml(order.note)}">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
+                    <rect x="5" y="3" width="14" height="18" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                    <line x1="8" y1="8" x2="16" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <line x1="8" y1="12" x2="16" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <line x1="8" y1="16" x2="13" y2="16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </span>` : ''}
+        </td>
         <td>
             ${order.customer.name || 'N/A'}<br>
             <small class="text-secondary">${order.customer.email || ''}</small>
@@ -648,6 +658,13 @@ function formatDate(dateString) {
         hour: '2-digit',
         minute: '2-digit'
     });
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function showToast(message, type = 'info') {
