@@ -142,8 +142,7 @@ class ProductValidator:
                         result['products'].append({
                             **product,
                             'shopify_quantity': item.get('quantity', 1),
-                            'shopify_price': item.get('price', 0),
-                            'shopify_name': item.get('name', '')
+                            'shopify_price': item.get('price', 0)
                         })
                 else:
                     # Product not found in either database

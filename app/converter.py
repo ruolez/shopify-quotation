@@ -222,7 +222,7 @@ class QuotationConverter:
             'ProductSKU': truncate(product.get('ProductSKU'), 20),
             'ProductUPC': truncate(product.get('ProductUPC'), 20),
             'ProductDescription': truncate(
-                product.get('shopify_name') or product.get('ProductDescription'),
+                product.get('ProductDescription'),
                 50
             ),
             'ItemSize': '',  # Default to empty string
