@@ -9,8 +9,9 @@ Shopify to BackOffice Quotation Transfer system - a Flask web application that c
 **Key Architecture Pattern:**
 - Frontend: Vanilla JavaScript (no framework) with Material Design 3
 - Backend: Flask REST API
-- Databases: SQLite (app data) + dual MS SQL Server (BackOffice + Inventory)
+- Databases: PostgreSQL (app data) + dual MS SQL Server (BackOffice + Inventory)
 - Deployment: Docker + Docker Compose
+- External API: Shopify Admin GraphQL API
 
 ## Development Commands
 
@@ -36,15 +37,15 @@ docker-compose down && docker-compose up -d --build
 ### Database Access
 
 ```bash
-# Access SQLite database
+# Access PostgreSQL database
 docker-compose exec app bash
-sqlite3 /app/data/app.db
+psql -h postgres -U admin -d shopify_quotation
 
-# Check SQLite schema
-sqlite3 /app/data/app.db ".schema"
+# Or from host machine (PostgreSQL on port 5434)
+psql -h localhost -p 5434 -U admin -d shopify_quotation
 
 # Query transfer history
-sqlite3 /app/data/app.db "SELECT * FROM transfer_history ORDER BY transferred_at DESC LIMIT 10;"
+psql -h localhost -p 5434 -U admin -d shopify_quotation -c "SELECT * FROM transfer_history ORDER BY transferred_at DESC LIMIT 10;"
 ```
 
 ### Production Deployment
@@ -75,6 +76,39 @@ The application uses a dual-database lookup pattern for product validation:
 **Code locations:**
 - `app/validator.py`: `ProductValidator.validate_order_products()` (batch logic)
 - `app/database.py`: `SQLServerManager.get_products_by_upc_batch()` (SQL query)
+
+### Shopify GraphQL API Integration
+
+**Client:** `app/shopify_client.py` - `ShopifyClient` class
+
+**Key Methods:**
+- `get_unfulfilled_orders(days_back=14)` - Fetch orders with pagination support
+- `get_order_by_id(order_id)` - Fetch single order
+- `test_connection()` - Verify API credentials
+
+**Fields Fetched from Shopify Orders:**
+- Basic: id, name, createdAt, displayFulfillmentStatus, note
+- Financial: totalPriceSet (amount, currency)
+- Customer: id, firstName, lastName, email
+- Shipping: Full address (firstName, lastName, company, address1, address2, city, province, zip, country, phone)
+- Line Items: id, name, quantity, variant (barcode, sku, price, title), product (id, title)
+
+**Adding New Fields:**
+1. Add field to GraphQL query in `get_unfulfilled_orders()` and `get_order_by_id()`
+2. Parse field in `_parse_order()` method
+3. Update frontend to display new field if needed
+
+**Example - Adding order notes:**
+```python
+# 1. Add to GraphQL query (line 130, 291)
+note
+
+# 2. Parse in _parse_order() (line 240)
+'note': order_node.get('note'),
+
+# 3. Display in frontend (orders.js line 198)
+${order.note ? `<span class="note-icon">...</span>` : ''}
+```
 
 ### Quotation Number Generation
 
@@ -190,13 +224,13 @@ app/templates/
 
 ## Database Schema Reference
 
-### SQLite Tables (app.db)
+### PostgreSQL Tables (shopify_quotation database)
 
 **shopify_stores** - Shopify API credentials (encrypted tokens)
-**sql_connections** - BackOffice/Inventory connection details
+**sql_connections** - BackOffice/Inventory connection details (encrypted passwords)
 **customer_mappings** - Maps store_id to BackOffice CustomerID
 **quotation_defaults** - Default values per store (Status, ShipperID, SalesRepID, TermID, title_prefix, expiration_days)
-**transfer_history** - All conversion attempts with success/failure tracking
+**transfer_history** - All conversion attempts with success/failure tracking (Central Time timestamps)
 
 ### MS SQL Server Tables (BackOffice)
 
@@ -379,8 +413,15 @@ Response:
 
 **Development (docker-compose.yml):**
 - `FLASK_ENV=development`
-- `POSTGRES_HOST=postgres`
+- `FLASK_APP=app.main:app`
+- `POSTGRES_HOST=postgres`, `POSTGRES_PORT=5432`
+- `POSTGRES_DB=shopify_quotation`, `POSTGRES_USER=admin`, `POSTGRES_PASSWORD=admin123`
 - `ENCRYPTION_KEY=p3C56Fb0GL65El4Uw8ZAGcNNjFi0Y9kfG-876Jh82vs=`
+
+**Port Configuration:**
+- Flask app: `5001:5000` (host:container)
+- PostgreSQL: `5434:5432` (host:container - changed from 5433 due to port conflict)
+- Access app: `http://localhost:5001`
 
 **Production (install.sh sets these):**
 - Port 80 instead of 5000-5100
@@ -398,8 +439,8 @@ Response:
 → Check `app/database.py:get_next_quotation_number()`
 
 ### "Transfer history not recording"
-→ Check SQLite database exists: `ls -la ./data/app.db`
-→ Verify schema: `sqlite3 ./data/app.db ".schema transfer_history"`
+→ Check PostgreSQL connection: `docker-compose logs postgres`
+→ Verify schema: `psql -h localhost -p 5434 -U admin -d shopify_quotation -c "\d transfer_history"`
 
 ### Frontend changes not appearing
 → Hard refresh browser (bypass cache)
