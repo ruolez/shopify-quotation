@@ -1,161 +1,228 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#ffffff">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffffff" />
     <title>Shopify Orders - Quotation Transfer</title>
-    <link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body>
+    <link rel="stylesheet" href="/static/css/style.css" />
+  </head>
+  <body>
     <!-- Header with Navigation -->
     <header class="header">
-        <div class="header-content">
-            <div class="header-left">
-                <h1>Shopify Quotation Transfer</h1>
-                <nav class="nav-links">
-                    <a href="/" class="nav-link active">Orders</a>
-                    <a href="/history" class="nav-link">History</a>
-                    <a href="/settings" class="nav-link">Settings</a>
-                </nav>
-            </div>
-            <div class="header-right">
-                <div class="header-store-selector">
-                    <label for="storeSelect" class="store-selector-label">Store:</label>
-                    <select id="storeSelect" class="store-selector-dropdown">
-                        <option value="">Loading stores...</option>
-                    </select>
-                </div>
-                <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
-                    <span class="theme-toggle-slider"></span>
-                </button>
-            </div>
+      <div class="header-content">
+        <div class="header-left">
+          <h1>Shopify Quotation Transfer</h1>
+          <nav class="nav-links">
+            <a href="/" class="nav-link active">Orders</a>
+            <a href="/history" class="nav-link">History</a>
+            <a href="/settings" class="nav-link">Settings</a>
+          </nav>
         </div>
+        <div class="header-right">
+          <div class="header-store-selector">
+            <label for="storeSelect" class="store-selector-label">Store:</label>
+            <select id="storeSelect" class="store-selector-dropdown">
+              <option value="">Loading stores...</option>
+            </select>
+          </div>
+          <button
+            class="theme-toggle"
+            id="themeToggle"
+            aria-label="Toggle dark mode"
+          >
+            <span class="theme-toggle-slider"></span>
+          </button>
+        </div>
+      </div>
     </header>
 
     <!-- Main Content -->
     <div class="container">
-        <!-- Orders Toolbar -->
-        <div class="toolbar" id="ordersToolbar" style="display: none;">
-            <div class="toolbar-search">
-                <div class="search-box search-box-product">
-                    <input type="text" id="searchOrders" placeholder="Search orders...">
-                    <button class="search-clear" id="clearSearch">&times;</button>
-                </div>
-                <label class="checkbox-label">
-                    <input type="checkbox" id="showTransferred">
-                    <span>Show Transferred</span>
-                </label>
-            </div>
-            <div class="toolbar-actions">
-                <button class="btn btn-secondary" id="refreshOrders">
-                    Refresh
-                </button>
-                <button class="btn btn-primary" id="transferSelected" disabled>
-                    ➜ Transfer Selected
-                </button>
-            </div>
+      <!-- Orders Toolbar -->
+      <div class="toolbar" id="ordersToolbar" style="display: none">
+        <div class="toolbar-search">
+          <div class="search-box search-box-product">
+            <input
+              type="text"
+              id="searchOrders"
+              placeholder="Search orders..."
+            />
+            <button class="search-clear" id="clearSearch">&times;</button>
+          </div>
+          <label class="checkbox-label">
+            <input type="checkbox" id="showTransferred" />
+            <span>Show Transferred</span>
+          </label>
+        </div>
+        <div class="toolbar-actions">
+          <button class="btn btn-secondary" id="refreshOrders">Refresh</button>
+          <button class="btn btn-primary" id="transferSelected" disabled>
+            ➜ Transfer Selected
+          </button>
+        </div>
+      </div>
+
+      <!-- Selection Summary -->
+      <div
+        class="active-filters-bar"
+        id="selectionSummary"
+        style="display: none"
+      >
+        <div class="active-filters-content">
+          <span class="active-filters-label">SELECTED:</span>
+          <span id="selectionCount">0 orders</span>
+        </div>
+        <button class="btn-clear-all-filters" id="clearSelection">
+          Clear Selection
+        </button>
+      </div>
+
+      <!-- Orders Table -->
+      <div class="card" id="ordersContainer" style="display: none">
+        <div class="table-summary" id="ordersSummary">
+          <div class="summary-item">
+            <span class="summary-label">Total Orders:</span>
+            <span class="summary-value" id="totalOrders">0</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Not Transferred:</span>
+            <span class="summary-value" id="pendingOrders">0</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Already Transferred:</span>
+            <span class="summary-value" id="transferredOrders">0</span>
+          </div>
         </div>
 
-        <!-- Selection Summary -->
-        <div class="active-filters-bar" id="selectionSummary" style="display: none;">
-            <div class="active-filters-content">
-                <span class="active-filters-label">SELECTED:</span>
-                <span id="selectionCount">0 orders</span>
-            </div>
-            <button class="btn-clear-all-filters" id="clearSelection">Clear Selection</button>
+        <div class="table-container">
+          <table id="ordersTable">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="selectAll" /></th>
+                <th>Order #</th>
+                <th>Customer</th>
+                <th>Date</th>
+                <th>Items</th>
+                <th>Total</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTableBody">
+              <!-- Orders will be inserted here -->
+            </tbody>
+          </table>
         </div>
+      </div>
 
-        <!-- Orders Table -->
-        <div class="card" id="ordersContainer" style="display: none;">
-            <div class="table-summary" id="ordersSummary">
-                <div class="summary-item">
-                    <span class="summary-label">Total Orders:</span>
-                    <span class="summary-value" id="totalOrders">0</span>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Not Transferred:</span>
-                    <span class="summary-value" id="pendingOrders">0</span>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Already Transferred:</span>
-                    <span class="summary-value" id="transferredOrders">0</span>
-                </div>
-            </div>
+      <!-- Empty State -->
+      <div class="empty-state" id="emptyState">
+        <div class="empty-state-icon">📦</div>
+        <h3>No Orders Found</h3>
+        <p>Select a store to view unfulfilled orders</p>
+      </div>
 
-            <div class="table-container">
-                <table id="ordersTable">
-                    <thead>
-                        <tr>
-                            <th><input type="checkbox" id="selectAll"></th>
-                            <th>Order #</th>
-                            <th>Customer</th>
-                            <th>Date</th>
-                            <th>Items</th>
-                            <th>Total</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="ordersTableBody">
-                        <!-- Orders will be inserted here -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Empty State -->
-        <div class="empty-state" id="emptyState">
-            <div class="empty-state-icon">📦</div>
-            <h3>No Orders Found</h3>
-            <p>Select a store to view unfulfilled orders</p>
-        </div>
-
-        <!-- Loading State -->
-        <div class="empty-state" id="loadingState" style="display: none;">
-            <div class="spinner" style="width: 48px; height: 48px;"></div>
-            <h3>Loading Orders...</h3>
-            <p>Fetching unfulfilled orders from Shopify</p>
-        </div>
+      <!-- Loading State -->
+      <div class="empty-state" id="loadingState" style="display: none">
+        <div class="spinner" style="width: 48px; height: 48px"></div>
+        <h3>Loading Orders...</h3>
+        <p>Fetching unfulfilled orders from Shopify</p>
+      </div>
     </div>
 
     <!-- Product Validation Modal -->
     <div class="modal-overlay" id="validationModal">
-        <div class="modal modal-large">
-            <div class="modal-header">
-                <h2>⚠️ Product Validation Results</h2>
-            </div>
-            <div class="modal-body">
-                <div id="validationContent">
-                    <!-- Validation results will be inserted here -->
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="closeValidationModal">Close</button>
-                <button class="btn btn-primary" id="proceedTransfer" style="display: none;">
-                    Continue Transfer
-                </button>
-            </div>
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h2>⚠️ Product Validation Results</h2>
         </div>
+        <div class="modal-body">
+          <div id="validationContent">
+            <!-- Validation results will be inserted here -->
+          </div>
+
+          <!-- Account Selection Section (shown only after successful validation) -->
+          <div id="accountSelectionSection" style="display: none">
+            <div class="modal-section-divider"></div>
+            <div class="form-group">
+              <label for="accountSearch">
+                Custom Account (Optional)
+                <span class="helper-text"
+                  >Leave blank to use default account mapping</span
+                >
+              </label>
+              <div class="autocomplete-wrapper">
+                <input
+                  type="text"
+                  id="accountSearch"
+                  class="form-control"
+                  placeholder="Type account number (min 2 characters)..."
+                  autocomplete="off"
+                />
+                <div
+                  id="accountDropdown"
+                  class="autocomplete-dropdown"
+                  style="display: none"
+                ></div>
+                <button
+                  type="button"
+                  id="clearAccountBtn"
+                  class="clear-btn"
+                  style="display: none"
+                  aria-label="Clear selection"
+                >
+                  ×
+                </button>
+              </div>
+              <div
+                id="selectedAccount"
+                class="selected-account"
+                style="display: none"
+              >
+                <strong>Selected:</strong>
+                <span id="selectedAccountText"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="closeValidationModal">
+            Close
+          </button>
+          <button
+            class="btn btn-primary"
+            id="proceedTransfer"
+            style="display: none"
+          >
+            Continue Transfer
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Transfer Confirmation Modal -->
     <div class="modal-overlay" id="confirmModal">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Confirm Transfer</h2>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to transfer <strong id="confirmCount">0</strong> order(s) to quotations?</p>
-                <p class="text-secondary">This will create new quotations in your BackOffice database.</p>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancelTransfer">Cancel</button>
-                <button class="btn btn-primary" id="confirmTransfer">
-                    ✓ Confirm Transfer
-                </button>
-            </div>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Confirm Transfer</h2>
         </div>
+        <div class="modal-body">
+          <p>
+            Are you sure you want to transfer
+            <strong id="confirmCount">0</strong> order(s) to quotations?
+          </p>
+          <p class="text-secondary">
+            This will create new quotations in your BackOffice database.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancelTransfer">Cancel</button>
+          <button class="btn btn-primary" id="confirmTransfer">
+            ✓ Confirm Transfer
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Toast Container -->
@@ -164,5 +231,5 @@
     <!-- Scripts -->
     <script src="/static/js/theme.js"></script>
     <script src="/static/js/orders.js"></script>
-</body>
+  </body>
 </html>

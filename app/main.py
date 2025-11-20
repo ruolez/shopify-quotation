@@ -262,6 +262,27 @@ def get_customers_list():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/customers/search', methods=['GET'])
+def search_customers():
+    """Search customers by AccountNo for autocomplete"""
+    try:
+        query = request.args.get('query', '').strip()
+        store_id = request.args.get('store_id', type=int)
+
+        if not query or len(query) < 2:
+            return jsonify({'success': False, 'error': 'Query must be at least 2 characters'}), 400
+
+        if not store_id:
+            return jsonify({'success': False, 'error': 'store_id is required'}), 400
+
+        backoffice, _ = get_sqlserver_managers()
+        customers = backoffice.search_customers_by_account(query, limit=10)
+        return jsonify({'success': True, 'customers': customers})
+    except Exception as e:
+        logger.error(f"Failed to search customers: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ============================================================================
 # QUOTATION DEFAULTS API
 # ============================================================================
@@ -393,6 +414,7 @@ def transfer_orders():
         data = request.get_json()
         store_id = data.get('store_id')
         order_ids = data.get('order_ids', [])
+        custom_customers = data.get('custom_customers', {})  # Optional: order_id -> customer_id mapping
 
         if not all([store_id, order_ids]):
             return jsonify({'success': False, 'error': 'Missing required fields'}), 400
@@ -453,9 +475,12 @@ def transfer_orders():
                     )
                     continue
 
+                # Get custom customer_id if provided
+                custom_customer_id = custom_customers.get(order_id)
+
                 # Create quotation
                 conv_result = converter.create_quotation_with_transaction(
-                    order, store_id, validation['products']
+                    order, store_id, validation['products'], customer_id_override=custom_customer_id
                 )
 
                 if conv_result['success']:

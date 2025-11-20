@@ -5,7 +5,7 @@ Handles header and line item creation with proper field mapping
 """
 
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from app.database import SQLServerManager, PostgreSQLManager
 
@@ -28,7 +28,8 @@ class QuotationConverter:
         self.postgres = postgres_manager
 
     def convert_order(self, shopify_order: Dict, store_id: int,
-                     validated_products: List[Dict]) -> Dict:
+                     validated_products: List[Dict],
+                     customer_id_override: Optional[int] = None) -> Dict:
         """
         Convert Shopify order to quotation
 
@@ -36,6 +37,7 @@ class QuotationConverter:
             shopify_order: Parsed Shopify order dict
             store_id: Shopify store ID
             validated_products: List of validated products from validator
+            customer_id_override: Optional custom customer ID to use instead of default mapping
 
         Returns:
             Dict with quotation details:
@@ -48,20 +50,27 @@ class QuotationConverter:
         """
         try:
             # Get store settings
-            customer_mapping = self.postgres.get_customer_mapping(store_id)
-            if not customer_mapping:
-                raise Exception("No customer mapping configured for this store")
-
             defaults = self.postgres.get_quotation_defaults(store_id)
             if not defaults:
                 raise Exception("No quotation defaults configured for this store")
 
+            # Determine which customer_id to use
+            if customer_id_override:
+                # Use custom customer ID if provided
+                customer_id = customer_id_override
+                logger.info(f"Using custom customer ID: {customer_id}")
+            else:
+                # Use default customer mapping
+                customer_mapping = self.postgres.get_customer_mapping(store_id)
+                if not customer_mapping:
+                    raise Exception("No customer mapping configured for this store")
+                customer_id = customer_mapping['customer_id']
+                logger.info(f"Using default customer ID from mapping: {customer_id}")
+
             # Get customer details from BackOffice
-            customer = self.backoffice.get_customer_by_id(
-                customer_mapping['customer_id']
-            )
+            customer = self.backoffice.get_customer_by_id(customer_id)
             if not customer:
-                raise Exception(f"Customer ID {customer_mapping['customer_id']} not found in BackOffice")
+                raise Exception(f"Customer ID {customer_id} not found in BackOffice")
 
             # Generate quotation number
             quotation_number = str(self.backoffice.get_next_quotation_number())
@@ -170,11 +179,11 @@ class QuotationConverter:
             'ShipZipCode': truncate(ship_addr.get('zip'), 10),
             'ShipPhoneNo': '',  # Default to empty string
 
-            # Defaults from settings
+            # Defaults from settings (with customer overrides where applicable)
             'Status': defaults.get('status', 1),
             'ShipperID': defaults.get('shipper_id'),
-            'SalesRepID': defaults.get('sales_rep_id'),
-            'TermID': defaults.get('term_id'),
+            'SalesRepID': customer.get('SalesRepID') or defaults.get('sales_rep_id'),  # Use customer's rep, fallback to default
+            'TermID': customer.get('TermID') or defaults.get('term_id'),  # Use customer's terms, fallback to default
 
             # Will be updated with calculated total
             'QuotationTotal': 0,
@@ -263,7 +272,8 @@ class QuotationConverter:
         }
 
     def create_quotation_with_transaction(self, shopify_order: Dict, store_id: int,
-                                        validated_products: List[Dict]) -> Dict:
+                                        validated_products: List[Dict],
+                                        customer_id_override: Optional[int] = None) -> Dict:
         """
         Convert order to quotation with full error handling and transaction support
 
@@ -273,6 +283,7 @@ class QuotationConverter:
             shopify_order: Parsed Shopify order
             store_id: Shopify store ID
             validated_products: List of validated products
+            customer_id_override: Optional custom customer ID to use instead of default mapping
 
         Returns:
             Dict with success status and quotation details
@@ -281,7 +292,7 @@ class QuotationConverter:
             Exception: If quotation creation fails
         """
         try:
-            result = self.convert_order(shopify_order, store_id, validated_products)
+            result = self.convert_order(shopify_order, store_id, validated_products, customer_id_override)
 
             logger.info(
                 f"Successfully created quotation {result['quotation_number']} "

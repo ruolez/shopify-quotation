@@ -521,13 +521,37 @@ class SQLServerManager:
 
     def get_customers_list(self, limit: int = 100) -> List[Dict]:
         """Get list of customers for dropdown"""
-        query = """
-            SELECT TOP %s CustomerID, BusinessName, AccountNo
+        query = f"""
+            SELECT TOP {limit} CustomerID, BusinessName, AccountNo
             FROM dbo.Customers_tbl
             WHERE Discontinued = 0 OR Discontinued IS NULL
             ORDER BY BusinessName
         """
-        return self.execute_query(query, (limit,))
+        return self.execute_query(query)
+
+    def search_customers_by_account(self, query: str, limit: int = 10) -> List[Dict]:
+        """
+        Search Customers_tbl by AccountNo (partial match)
+
+        Args:
+            query: Search string for AccountNo
+            limit: Maximum number of results to return
+
+        Returns:
+            List of dicts with CustomerID, AccountNo, BusinessName
+        """
+        # Search with case-insensitive matching
+        sql_query = f"""
+            SELECT TOP {limit} CustomerID, AccountNo, BusinessName, Discontinued
+            FROM dbo.Customers_tbl
+            WHERE UPPER(AccountNo) LIKE UPPER(%s)
+                AND (Discontinued = 0 OR Discontinued IS NULL)
+            ORDER BY AccountNo
+        """
+        search_pattern = f"%{query}%"  # Search anywhere in AccountNo
+        results = self.execute_query(sql_query, (search_pattern,))
+        logger.info(f"Customer search '{query}' returned {len(results)} results")
+        return results
 
     def get_product_by_upc(self, upc: str) -> Optional[Dict]:
         """Get product details by UPC/barcode"""
