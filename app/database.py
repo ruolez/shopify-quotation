@@ -497,11 +497,12 @@ class SQLServerManager:
     # ========================================================================
 
     def get_next_quotation_number(self) -> int:
-        """Get next quotation number (MAX + 1)"""
+        """Get next quotation number based on last created quotation + 1"""
         query = """
-            SELECT ISNULL(MAX(CAST(QuotationNumber AS BIGINT)), 0) + 1 as next_number
+            SELECT TOP 1 CAST(QuotationNumber AS BIGINT) + 1 as next_number
             FROM dbo.Quotations_tbl
             WHERE ISNUMERIC(QuotationNumber) = 1
+            ORDER BY QuotationID DESC
         """
         result = self.execute_query(query)
         return int(result[0]['next_number']) if result else 1
