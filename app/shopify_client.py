@@ -201,18 +201,20 @@ class ShopifyClient:
 
     def _parse_order(self, order_node: Dict) -> Dict:
         """Parse Shopify order node into simplified structure"""
-        # Extract customer info
-        customer = order_node.get('customer', {})
+        # Extract customer info (handle null values from Shopify API)
+        customer = order_node.get('customer') or {}
         customer_name = f"{customer.get('firstName', '')} {customer.get('lastName', '')}".strip()
 
-        # Extract shipping address
-        ship_addr = order_node.get('shippingAddress', {})
+        # Extract shipping address (handle null values from Shopify API)
+        ship_addr = order_node.get('shippingAddress') or {}
 
         # Extract line items
         line_items = []
-        for item_edge in order_node.get('lineItems', {}).get('edges', []):
-            item_node = item_edge.get('node', {})
-            variant = item_node.get('variant', {})
+        line_items_data = order_node.get('lineItems') or {}
+        for item_edge in line_items_data.get('edges') or []:
+            item_node = item_edge.get('node') or {}
+            variant = item_node.get('variant') or {}
+            product = variant.get('product') or {}
 
             line_items.append({
                 'id': item_node.get('id', ''),
@@ -220,16 +222,17 @@ class ShopifyClient:
                 'quantity': item_node.get('quantity', 1),
                 'barcode': variant.get('barcode', ''),
                 'sku': variant.get('sku', ''),
-                'price': float(variant.get('price', 0)),
+                'price': float(variant.get('price') or 0),
                 'variant_title': variant.get('title', ''),
-                'product_id': variant.get('product', {}).get('id', ''),
-                'product_title': variant.get('product', {}).get('title', '')
+                'product_id': product.get('id', ''),
+                'product_title': product.get('title', '')
             })
 
-        # Extract total
-        total_price_set = order_node.get('totalPriceSet', {}).get('shopMoney', {})
-        total_amount = float(total_price_set.get('amount', 0))
-        currency = total_price_set.get('currencyCode', 'USD')
+        # Extract total (handle null values from Shopify API)
+        total_price_data = order_node.get('totalPriceSet') or {}
+        total_price_set = total_price_data.get('shopMoney') or {}
+        total_amount = float(total_price_set.get('amount') or 0)
+        currency = total_price_set.get('currencyCode') or 'USD'
 
         return {
             'id': order_node.get('id', '').split('/')[-1],  # Extract numeric ID
