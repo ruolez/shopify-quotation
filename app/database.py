@@ -672,9 +672,10 @@ class SQLServerManager:
         query = """
             INSERT INTO dbo.Items_tbl (
                 CateID, SubCateID, ProductSKU, ProductUPC, ProductDescription,
-                UnitPrice, UnitCost, ItemSize, ItemWeight, UnitID, ItemTaxID
+                UnitPrice, UnitCost, ItemSize, ItemWeight, UnitID, ItemTaxID,
+                SPPromoted
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
         """
         product_id = self.execute_insert(query, (
@@ -688,7 +689,8 @@ class SQLServerManager:
             inventory_product.get('ItemSize'),
             inventory_product.get('ItemWeight'),
             inventory_product.get('UnitID'),
-            inventory_product.get('ItemTaxID')
+            inventory_product.get('ItemTaxID'),
+            inventory_product.get('SPPromoted', 0)  # Default to 0 if not in Inventory
         ))
 
         # Return full product dict with new ProductID
