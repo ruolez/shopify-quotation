@@ -481,6 +481,37 @@ function showValidationModal(validation, orderName) {
             </div>
             <p class="text-warning mt-2"><strong>⚠️ Transfer blocked:</strong> Please add missing products to your Inventory database first.</p>
         `;
+
+    // Add diagnostics section for debugging
+    if (validation.diagnostics) {
+      const diag = validation.diagnostics;
+      const missingBarcodes = validation.missing
+        .map((m) => m.barcode)
+        .filter((b) => b !== "NONE")
+        .join(",");
+
+      html += `
+            <div class="diagnostics-box" style="margin-top: 16px; padding: 12px; background: var(--surface-variant, #f5f5f5); border-radius: 8px; font-size: 13px; border: 1px solid var(--outline, #ddd);">
+                <strong>🔍 Debug Info:</strong>
+                <ul style="margin: 8px 0 0 0; padding-left: 20px; color: var(--text-secondary, #666);">
+                    <li>Barcodes searched: ${diag.barcodes_searched?.length || 0}</li>
+                    <li>Found in BackOffice: ${diag.backoffice_found || 0}</li>
+                    <li>Inventory queried: ${diag.inventory_queried ? "Yes" : "No"}</li>
+                    <li>Found in Inventory: ${diag.inventory_found || 0}</li>
+                </ul>
+                ${
+                  missingBarcodes
+                    ? `
+                <button class="btn btn-secondary btn-small" style="margin-top: 8px;"
+                    onclick="debugProductLookup('${missingBarcodes}')">
+                    🔬 Test Product Lookup
+                </button>
+                `
+                    : ""
+                }
+            </div>
+        `;
+    }
   }
 
   content.innerHTML = html;
@@ -850,6 +881,75 @@ async function confirmTransfer() {
 
   hideLoading();
 }
+
+// ============================================================================
+// DEBUG FUNCTIONS
+// ============================================================================
+
+async function debugProductLookup(barcodesCsv) {
+  if (!barcodesCsv) {
+    showToast("No barcodes to test", "warning");
+    return;
+  }
+
+  showToast("Testing product lookup...", "info");
+
+  try {
+    const response = await fetch("/api/debug/product-lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ barcodes: barcodesCsv.split(",") }),
+    });
+    const data = await response.json();
+
+    console.log("=== Product Lookup Debug Results ===");
+    console.log("Input barcodes:", data.input_barcodes);
+    console.log("BackOffice:", data.backoffice);
+    console.log("Inventory:", data.inventory);
+    console.log("=====================================");
+
+    if (data.success) {
+      const bo = data.backoffice;
+      const inv = data.inventory;
+
+      let msg = `PRODUCT LOOKUP RESULTS\n\n`;
+      msg += `BackOffice (${bo.host}/${bo.database}):\n`;
+      msg += `  Found: ${bo.found_count} / ${data.input_barcodes.length}\n`;
+      if (bo.not_found.length > 0) {
+        msg += `  Not found: ${bo.not_found.join(", ")}\n`;
+      }
+      msg += `\nInventory (${inv.host}/${inv.database}):\n`;
+      msg += `  Found: ${inv.found_count} / ${data.input_barcodes.length}\n`;
+      if (inv.not_found.length > 0) {
+        msg += `  Not found: ${inv.not_found.join(", ")}\n`;
+      }
+      msg += `\n(Full details in browser console - press F12)`;
+
+      alert(msg);
+
+      if (inv.found_count > 0) {
+        showToast(
+          `Found ${inv.found_count} in Inventory - copy should work!`,
+          "success",
+        );
+      } else {
+        showToast(
+          `Products not found in Inventory - check barcode format`,
+          "warning",
+        );
+      }
+    } else {
+      showToast("Debug failed: " + data.error, "error");
+      alert("Debug lookup failed:\n\n" + data.error);
+    }
+  } catch (error) {
+    console.error("Debug lookup error:", error);
+    showToast("Debug error: " + error.message, "error");
+  }
+}
+
+// Make debug function globally accessible for onclick
+window.debugProductLookup = debugProductLookup;
 
 // ============================================================================
 // UTILITY FUNCTIONS

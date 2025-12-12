@@ -596,6 +596,112 @@ def delete_failed_transfers():
 
 
 # ============================================================================
+# DEBUG ENDPOINTS
+# ============================================================================
+
+@app.route('/api/debug/verify-databases', methods=['GET'])
+def verify_databases():
+    """
+    Verify both SQL Server databases are properly connected.
+    Returns detailed info about each database including Items_tbl status.
+    """
+    try:
+        backoffice_config = postgres.get_sql_connection('backoffice')
+        inventory_config = postgres.get_sql_connection('inventory')
+
+        result = {
+            'backoffice': {'configured': backoffice_config is not None},
+            'inventory': {'configured': inventory_config is not None}
+        }
+
+        # Test BackOffice connection
+        if backoffice_config:
+            result['backoffice']['host'] = backoffice_config.get('host')
+            result['backoffice']['database'] = backoffice_config.get('database_name')
+            backoffice = SQLServerManager(backoffice_config)
+            success, msg = backoffice.test_connection()
+            result['backoffice']['connection_ok'] = success
+            result['backoffice']['message'] = msg
+            if success:
+                result['backoffice']['table_info'] = backoffice.verify_items_table_exists()
+
+        # Test Inventory connection
+        if inventory_config:
+            result['inventory']['host'] = inventory_config.get('host')
+            result['inventory']['database'] = inventory_config.get('database_name')
+            inventory = SQLServerManager(inventory_config)
+            success, msg = inventory.test_connection()
+            result['inventory']['connection_ok'] = success
+            result['inventory']['message'] = msg
+            if success:
+                result['inventory']['table_info'] = inventory.verify_items_table_exists()
+
+        return jsonify({'success': True, 'databases': result})
+
+    except Exception as e:
+        logger.error(f"Database verification failed: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/debug/product-lookup', methods=['POST'])
+def debug_product_lookup():
+    """
+    Debug endpoint to test product lookup in both databases.
+    Useful for diagnosing why products aren't found during validation.
+    """
+    try:
+        data = request.get_json()
+        barcodes = data.get('barcodes', [])
+
+        if not barcodes:
+            return jsonify({'success': False, 'error': 'No barcodes provided'}), 400
+
+        # Handle string input (comma-separated)
+        if isinstance(barcodes, str):
+            barcodes = [b.strip() for b in barcodes.split(',') if b.strip()]
+
+        logger.info(f"Debug product lookup for barcodes: {barcodes}")
+
+        backoffice, inventory = get_sqlserver_managers()
+
+        # Lookup in both databases
+        backoffice_results = backoffice.get_products_by_upc_batch(barcodes)
+        inventory_results = inventory.get_products_by_upc_batch(barcodes)
+
+        return jsonify({
+            'success': True,
+            'input_barcodes': barcodes,
+            'backoffice': {
+                'host': backoffice.host,
+                'database': backoffice.database,
+                'found_count': len(backoffice_results),
+                'found_barcodes': list(backoffice_results.keys()),
+                'not_found': [b for b in barcodes if b not in backoffice_results],
+                'products': {k: {'ProductID': v.get('ProductID'), 'ProductDescription': v.get('ProductDescription')}
+                            for k, v in backoffice_results.items()}
+            },
+            'inventory': {
+                'host': inventory.host,
+                'database': inventory.database,
+                'found_count': len(inventory_results),
+                'found_barcodes': list(inventory_results.keys()),
+                'not_found': [b for b in barcodes if b not in inventory_results],
+                'products': {k: {'ProductID': v.get('ProductID'), 'ProductDescription': v.get('ProductDescription')}
+                            for k, v in inventory_results.items()}
+            }
+        })
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Debug product lookup failed: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+# ============================================================================
 # HEALTH CHECK
 # ============================================================================
 

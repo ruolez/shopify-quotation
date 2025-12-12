@@ -492,6 +492,46 @@ class SQLServerManager:
         except Exception as e:
             return False, str(e)
 
+    def verify_items_table_exists(self) -> Dict:
+        """
+        Verify Items_tbl exists and return diagnostic info for debugging.
+        Useful for confirming database connectivity and data presence.
+        """
+        try:
+            # Check total count
+            query_count = "SELECT COUNT(*) as total FROM dbo.Items_tbl"
+            count_result = self.execute_query(query_count)
+            total = count_result[0]['total'] if count_result else 0
+
+            # Get sample barcodes for verification
+            query_sample = """
+                SELECT TOP 5 ProductUPC, ProductDescription
+                FROM dbo.Items_tbl
+                WHERE ProductUPC IS NOT NULL AND ProductUPC != ''
+                ORDER BY ProductID DESC
+            """
+            sample_result = self.execute_query(query_sample)
+
+            logger.info(f"[{self.connection_type}] Items_tbl verified: {total} total products")
+
+            return {
+                'table_exists': True,
+                'total_products': total,
+                'sample_products': sample_result,
+                'connection_type': self.connection_type,
+                'database': self.database,
+                'host': self.host
+            }
+        except Exception as e:
+            logger.error(f"[{self.connection_type}] Failed to verify Items_tbl: {str(e)}")
+            return {
+                'table_exists': False,
+                'error': str(e),
+                'connection_type': self.connection_type,
+                'database': self.database,
+                'host': self.host
+            }
+
     # ========================================================================
     # BackOffice Specific Queries
     # ========================================================================
@@ -577,7 +617,11 @@ class SQLServerManager:
             Dict mapping barcode -> product details
         """
         if not upc_list:
+            logger.warning(f"[{self.connection_type}] get_products_by_upc_batch called with empty list")
             return {}
+
+        # Log input barcodes for debugging
+        logger.info(f"[{self.connection_type}] Batch lookup for {len(upc_list)} barcodes: {upc_list[:5]}{'...' if len(upc_list) > 5 else ''}")
 
         # Create placeholders for IN clause
         placeholders = ','.join(['%s'] * len(upc_list))
@@ -590,16 +634,30 @@ class SQLServerManager:
             WHERE ProductUPC IN ({placeholders})
         """
 
-        results = self.execute_query(query, tuple(upc_list))
+        try:
+            results = self.execute_query(query, tuple(upc_list))
+            logger.info(f"[{self.connection_type}] Query returned {len(results)} products")
 
-        # Build dict mapping barcode -> product
-        products_dict = {}
-        for product in results:
-            barcode = product.get('ProductUPC')
-            if barcode:
-                products_dict[barcode] = product
+            # Build dict mapping barcode -> product
+            products_dict = {}
+            for product in results:
+                barcode = product.get('ProductUPC')
+                if barcode:
+                    products_dict[barcode] = product
 
-        return products_dict
+            # Log which barcodes were NOT found (critical for debugging)
+            found_barcodes = set(products_dict.keys())
+            missing = set(upc_list) - found_barcodes
+            if missing:
+                logger.warning(f"[{self.connection_type}] Barcodes NOT found in DB: {list(missing)}")
+            else:
+                logger.info(f"[{self.connection_type}] All {len(upc_list)} barcodes found")
+
+            return products_dict
+
+        except Exception as e:
+            logger.error(f"[{self.connection_type}] Batch query FAILED: {str(e)}")
+            raise
 
     def copy_product_from_inventory(self, inventory_product: Dict) -> Dict:
         """

@@ -11,6 +11,16 @@ from app.database import SQLServerManager
 logger = logging.getLogger(__name__)
 
 
+def normalize_barcode(barcode: str) -> str:
+    """
+    Normalize barcode for consistent matching.
+    Strips whitespace. Does NOT remove leading zeros (may be significant).
+    """
+    if not barcode:
+        return ''
+    return barcode.strip()
+
+
 class ProductValidator:
     """Validates products and copies from Inventory to BackOffice if needed"""
 
@@ -55,7 +65,13 @@ class ProductValidator:
             'products': [],
             'missing': [],
             'copied': [],
-            'errors': []
+            'errors': [],
+            'diagnostics': {
+                'barcodes_searched': [],
+                'backoffice_found': 0,
+                'inventory_found': 0,
+                'inventory_queried': False
+            }
         }
 
         # Build mapping of barcode -> line item(s)
@@ -91,12 +107,14 @@ class ProductValidator:
             return result
 
         all_barcodes = list(barcode_to_items.keys())
+        result['diagnostics']['barcodes_searched'] = all_barcodes
 
         try:
             # BATCH QUERY #1: Check all barcodes in BackOffice (1 query instead of N)
             logger.info(f"Batch querying BackOffice for {len(all_barcodes)} products...")
             backoffice_products = self.backoffice.get_products_by_upc_batch(all_barcodes)
             logger.info(f"Found {len(backoffice_products)} products in BackOffice")
+            result['diagnostics']['backoffice_found'] = len(backoffice_products)
 
             # Identify missing barcodes
             missing_barcodes = [b for b in all_barcodes if b not in backoffice_products]
@@ -107,6 +125,8 @@ class ProductValidator:
                 logger.info(f"Batch querying Inventory for {len(missing_barcodes)} missing products...")
                 inventory_products = self.inventory.get_products_by_upc_batch(missing_barcodes)
                 logger.info(f"Found {len(inventory_products)} products in Inventory")
+                result['diagnostics']['inventory_queried'] = True
+                result['diagnostics']['inventory_found'] = len(inventory_products)
 
             # Copy products from Inventory to BackOffice
             for barcode, inventory_product in inventory_products.items():
@@ -148,12 +168,18 @@ class ProductValidator:
                     # Product not found in either database
                     result['valid'] = False
                     for item in items:
+                        # Provide detailed reason for debugging
+                        bo_found = result['diagnostics']['backoffice_found']
+                        inv_found = result['diagnostics']['inventory_found']
+                        inv_queried = result['diagnostics']['inventory_queried']
+                        reason = f'Not found in BackOffice ({bo_found} found) or Inventory ({inv_found} found, queried={inv_queried})'
+
                         result['missing'].append({
                             'barcode': barcode,
                             'name': item.get('name', 'Unknown'),
                             'sku': item.get('sku', ''),
                             'quantity': item.get('quantity', 0),
-                            'reason': 'Not found in Inventory database'
+                            'reason': reason
                         })
                         result['errors'].append(
                             f"Product '{item.get('name')}' (barcode: {barcode}) not found in any database"
