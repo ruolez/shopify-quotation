@@ -64,6 +64,56 @@ class ShopifyClient:
             logger.error(f"Shopify GraphQL error: {str(e)}")
             raise
 
+    def _fetch_all_line_items(self, order_gid: str) -> List[Dict]:
+        """Fetch all line items for an order using cursor pagination"""
+        all_items = []
+        cursor = None
+        has_next = True
+
+        while has_next:
+            after_clause = f', after: "{cursor}"' if cursor else ''
+            query = f"""
+            {{
+                order(id: "{order_gid}") {{
+                    lineItems(first: 250{after_clause}) {{
+                        pageInfo {{
+                            hasNextPage
+                            endCursor
+                        }}
+                        edges {{
+                            node {{
+                                id
+                                name
+                                quantity
+                                variant {{
+                                    id
+                                    barcode
+                                    sku
+                                    price
+                                    title
+                                    product {{
+                                        id
+                                        title
+                                    }}
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+            """
+            data = self._execute_query(query)
+            line_items_data = data.get('order', {}).get('lineItems', {})
+
+            for edge in line_items_data.get('edges', []):
+                all_items.append(edge.get('node', {}))
+
+            page_info = line_items_data.get('pageInfo', {})
+            has_next = page_info.get('hasNextPage', False)
+            cursor = page_info.get('endCursor')
+
+        return all_items
+
     def test_connection(self) -> tuple[bool, str]:
         """Test Shopify API connection"""
         try:
@@ -154,7 +204,11 @@ class ShopifyClient:
                                 countryCodeV2
                                 phone
                             }}
-                            lineItems(first: 100) {{
+                            lineItems(first: 250) {{
+                                pageInfo {{
+                                    hasNextPage
+                                    endCursor
+                                }}
                                 edges {{
                                     node {{
                                         id
@@ -187,7 +241,18 @@ class ShopifyClient:
             orders = []
             for edge in orders_data.get('edges', []):
                 node = edge.get('node', {})
-                orders.append(self._parse_order(node))
+                order_gid = node.get('id', '')
+
+                # Check if order has more line items to fetch
+                line_items_data = node.get('lineItems') or {}
+                line_items_page_info = line_items_data.get('pageInfo', {})
+
+                if line_items_page_info.get('hasNextPage', False):
+                    # Fetch all line items with pagination
+                    all_line_items = self._fetch_all_line_items(order_gid)
+                    orders.append(self._parse_order(node, all_line_items))
+                else:
+                    orders.append(self._parse_order(node))
 
             return {
                 'orders': orders,
@@ -199,8 +264,13 @@ class ShopifyClient:
             logger.error(f"Failed to fetch orders: {str(e)}")
             raise
 
-    def _parse_order(self, order_node: Dict) -> Dict:
-        """Parse Shopify order node into simplified structure"""
+    def _parse_order(self, order_node: Dict, all_line_items: List[Dict] = None) -> Dict:
+        """Parse Shopify order node into simplified structure
+
+        Args:
+            order_node: Raw order data from GraphQL
+            all_line_items: Optional pre-fetched line items (for pagination)
+        """
         # Extract customer info (handle null values from Shopify API)
         customer = order_node.get('customer') or {}
         customer_name = f"{customer.get('firstName', '')} {customer.get('lastName', '')}".strip()
@@ -208,25 +278,44 @@ class ShopifyClient:
         # Extract shipping address (handle null values from Shopify API)
         ship_addr = order_node.get('shippingAddress') or {}
 
-        # Extract line items
+        # Extract line items - use pre-fetched if provided, otherwise from order_node
         line_items = []
-        line_items_data = order_node.get('lineItems') or {}
-        for item_edge in line_items_data.get('edges') or []:
-            item_node = item_edge.get('node') or {}
-            variant = item_node.get('variant') or {}
-            product = variant.get('product') or {}
+        if all_line_items is not None:
+            # Use pre-fetched line items (from pagination)
+            for item_node in all_line_items:
+                variant = item_node.get('variant') or {}
+                product = variant.get('product') or {}
 
-            line_items.append({
-                'id': item_node.get('id', ''),
-                'name': item_node.get('name', ''),
-                'quantity': item_node.get('quantity', 1),
-                'barcode': variant.get('barcode', ''),
-                'sku': variant.get('sku', ''),
-                'price': float(variant.get('price') or 0),
-                'variant_title': variant.get('title', ''),
-                'product_id': product.get('id', ''),
-                'product_title': product.get('title', '')
-            })
+                line_items.append({
+                    'id': item_node.get('id', ''),
+                    'name': item_node.get('name', ''),
+                    'quantity': item_node.get('quantity', 1),
+                    'barcode': variant.get('barcode', ''),
+                    'sku': variant.get('sku', ''),
+                    'price': float(variant.get('price') or 0),
+                    'variant_title': variant.get('title', ''),
+                    'product_id': product.get('id', ''),
+                    'product_title': product.get('title', '')
+                })
+        else:
+            # Extract from order_node
+            line_items_data = order_node.get('lineItems') or {}
+            for item_edge in line_items_data.get('edges') or []:
+                item_node = item_edge.get('node') or {}
+                variant = item_node.get('variant') or {}
+                product = variant.get('product') or {}
+
+                line_items.append({
+                    'id': item_node.get('id', ''),
+                    'name': item_node.get('name', ''),
+                    'quantity': item_node.get('quantity', 1),
+                    'barcode': variant.get('barcode', ''),
+                    'sku': variant.get('sku', ''),
+                    'price': float(variant.get('price') or 0),
+                    'variant_title': variant.get('title', ''),
+                    'product_id': product.get('id', ''),
+                    'product_title': product.get('title', '')
+                })
 
         # Extract total (handle null values from Shopify API)
         total_price_data = order_node.get('totalPriceSet') or {}
@@ -319,7 +408,11 @@ class ShopifyClient:
                         countryCodeV2
                         phone
                     }}
-                    lineItems(first: 100) {{
+                    lineItems(first: 250) {{
+                        pageInfo {{
+                            hasNextPage
+                            endCursor
+                        }}
                         edges {{
                             node {{
                                 id
@@ -348,6 +441,15 @@ class ShopifyClient:
 
             if not order_node:
                 return None
+
+            # Check if order has more line items to fetch
+            line_items_data = order_node.get('lineItems') or {}
+            line_items_page_info = line_items_data.get('pageInfo', {})
+
+            if line_items_page_info.get('hasNextPage', False):
+                # Fetch all line items with pagination
+                all_line_items = self._fetch_all_line_items(order_gid)
+                return self._parse_order(order_node, all_line_items)
 
             return self._parse_order(order_node)
 
