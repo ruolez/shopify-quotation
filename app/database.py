@@ -536,16 +536,70 @@ class SQLServerManager:
     # BackOffice Specific Queries
     # ========================================================================
 
-    def get_next_quotation_number(self) -> int:
-        """Get next quotation number based on last created quotation + 1"""
-        query = """
-            SELECT TOP 1 CAST(QuotationNumber AS BIGINT) + 1 as next_number
+    def get_next_quotation_number(self) -> str:
+        """
+        Generate next quotation number using format: [Month][Day][Year][DB_ID][Counter]
+
+        DB ID is extracted from the most recent quotation number.
+        Counter resets daily.
+
+        Returns:
+            Next quotation number as string
+        """
+        from datetime import datetime
+
+        today = datetime.now()
+        current_year = str(today.year)
+
+        # Step 1: Get the most recent quotation to extract DB ID
+        query_recent = """
+            SELECT TOP 1 QuotationNumber
             FROM dbo.Quotations_tbl
             WHERE ISNUMERIC(QuotationNumber) = 1
             ORDER BY QuotationID DESC
         """
-        result = self.execute_query(query)
-        return int(result[0]['next_number']) if result else 1
+        recent = self.execute_query(query_recent)
+
+        if not recent:
+            raise Exception("No existing quotations found to determine DB ID")
+
+        recent_number = str(recent[0]['QuotationNumber'])
+
+        # Step 2: Find the year in the quotation number and extract DB ID
+        year_pos = recent_number.find(current_year)
+        if year_pos == -1:
+            # Try previous year (for year boundary cases)
+            prev_year = str(today.year - 1)
+            year_pos = recent_number.find(prev_year)
+            if year_pos == -1:
+                raise Exception(f"Cannot find year in quotation number: {recent_number}")
+
+        # DB ID is the single digit after the 4-digit year
+        db_id_pos = year_pos + 4
+        db_id = recent_number[db_id_pos]
+
+        # Step 3: Build today's prefix
+        date_prefix = f"{today.month}{today.day}{today.year}"
+        full_prefix = f"{date_prefix}{db_id}"
+
+        # Step 4: Find max counter for today
+        prefix_len = len(full_prefix)
+        pattern = f"{full_prefix}%"
+
+        query_counter = """
+            SELECT ISNULL(
+                MAX(CAST(SUBSTRING(QuotationNumber, %s, LEN(QuotationNumber) - %s + 1) AS INT)),
+                0
+            ) + 1 as next_counter
+            FROM dbo.Quotations_tbl
+            WHERE QuotationNumber LIKE %s
+              AND ISNUMERIC(QuotationNumber) = 1
+        """
+
+        result = self.execute_query(query_counter, (prefix_len + 1, prefix_len, pattern))
+        next_counter = result[0]['next_counter'] if result else 1
+
+        return f"{full_prefix}{next_counter}"
 
     def get_customer_by_id(self, customer_id: int) -> Optional[Dict]:
         """Get customer details by CustomerID"""
