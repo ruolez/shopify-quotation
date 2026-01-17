@@ -115,6 +115,32 @@ check_port() {
     fi
 }
 
+# Function to run database migrations
+run_migrations() {
+    print_info "Running database migrations..."
+
+    # Check if migrations directory exists
+    if [ ! -d "$APP_DIR/migrations" ]; then
+        print_warning "No migrations directory found, skipping migrations"
+        return
+    fi
+
+    # Run all SQL migration files in order
+    for migration in "$APP_DIR/migrations"/*.sql; do
+        if [ -f "$migration" ]; then
+            migration_name=$(basename "$migration")
+            print_info "Applying migration: $migration_name"
+
+            # Run migration using docker compose exec
+            docker compose exec -T postgres psql -U admin -d shopify_quotation -f "/migrations/$migration_name" 2>/dev/null || {
+                print_warning "Migration $migration_name may have already been applied"
+            }
+        fi
+    done
+
+    print_success "Database migrations completed"
+}
+
 # Function to backup data
 backup_data() {
     if [ -d "$DATA_DIR" ]; then
@@ -226,6 +252,9 @@ update_application() {
     # Wait for application to start
     print_info "Waiting for application to start..."
     sleep 10
+
+    # Run database migrations
+    run_migrations
 
     # Detect IP address
     detect_ip

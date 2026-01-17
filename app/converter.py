@@ -73,7 +73,8 @@ class QuotationConverter:
                 raise Exception(f"Customer ID {customer_id} not found in BackOffice")
 
             # Generate quotation number
-            quotation_number = str(self.backoffice.get_next_quotation_number())
+            db_id = defaults.get('db_id') or '1'
+            quotation_number = str(self.backoffice.get_next_quotation_number(db_id))
 
             # Build quotation header
             quotation_header = self._build_quotation_header(

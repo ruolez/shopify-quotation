@@ -466,6 +466,11 @@ async function renderQuotationDefaults() {
                     <label for="expiration_days_${store.id}">Expiration Days</label>
                     <input type="number" id="expiration_days_${store.id}" placeholder="365" value="${defaults.expiration_days || 365}">
                 </div>
+                <div class="form-group">
+                    <label for="db_id_${store.id}">Database ID (Quotation Number)</label>
+                    <input type="text" id="db_id_${store.id}" maxlength="1" placeholder="1" value="${defaults.db_id || '1'}">
+                    <small class="text-secondary">Single digit used in quotation number format</small>
+                </div>
                 <button class="btn btn-primary" onclick="saveQuotationDefaults(${store.id})">
                     💾 Save Defaults
                 </button>
@@ -488,6 +493,7 @@ async function saveQuotationDefaults(storeId) {
     const termId = getValue(`term_id_${storeId}`);
     const titlePrefix = document.getElementById(`title_prefix_${storeId}`).value.trim();
     const expirationDays = getValue(`expiration_days_${storeId}`) || 365;
+    const dbId = document.getElementById(`db_id_${storeId}`).value.trim() || '1';
 
     try {
         const response = await fetch('/api/quotation-defaults', {
@@ -500,7 +506,8 @@ async function saveQuotationDefaults(storeId) {
                 sales_rep_id: salesRepId,
                 term_id: termId,
                 quotation_title_prefix: titlePrefix,
-                expiration_days: expirationDays
+                expiration_days: expirationDays,
+                db_id: dbId
             })
         });
 

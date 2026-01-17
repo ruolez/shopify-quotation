@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS quotation_defaults (
     term_id INTEGER,
     quotation_title_prefix VARCHAR(50) DEFAULT 'Shopify Order',
     expiration_days INTEGER DEFAULT 365,
+    db_id VARCHAR(1) DEFAULT '1',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(shopify_store_id)

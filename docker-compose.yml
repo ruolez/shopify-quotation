@@ -34,6 +34,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./app/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - ./migrations:/migrations
     ports:
       - "5434:5432"
     restart: unless-stopped

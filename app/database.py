@@ -276,7 +276,7 @@ class PostgreSQLManager:
         """Get quotation defaults for store"""
         query = """
             SELECT id, shopify_store_id, status, shipper_id, sales_rep_id,
-                   term_id, quotation_title_prefix, expiration_days,
+                   term_id, quotation_title_prefix, expiration_days, db_id,
                    created_at, updated_at
             FROM quotation_defaults
             WHERE shopify_store_id = %s
@@ -287,13 +287,13 @@ class PostgreSQLManager:
     def upsert_quotation_defaults(self, store_id: int, status: int = None,
                                   shipper_id: int = None, sales_rep_id: int = None,
                                   term_id: int = None, quotation_title_prefix: str = None,
-                                  expiration_days: int = 365) -> int:
+                                  expiration_days: int = 365, db_id: str = '1') -> int:
         """Create or update quotation defaults"""
         query = """
             INSERT INTO quotation_defaults
                 (shopify_store_id, status, shipper_id, sales_rep_id, term_id,
-                 quotation_title_prefix, expiration_days)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                 quotation_title_prefix, expiration_days, db_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (shopify_store_id)
             DO UPDATE SET
                 status = EXCLUDED.status,
@@ -302,12 +302,13 @@ class PostgreSQLManager:
                 term_id = EXCLUDED.term_id,
                 quotation_title_prefix = EXCLUDED.quotation_title_prefix,
                 expiration_days = EXCLUDED.expiration_days,
+                db_id = EXCLUDED.db_id,
                 updated_at = CURRENT_TIMESTAMP
             RETURNING id
         """
         return self.execute_insert(query, (
             store_id, status, shipper_id, sales_rep_id, term_id,
-            quotation_title_prefix, expiration_days
+            quotation_title_prefix, expiration_days, db_id
         ))
 
     # ========================================================================
@@ -536,12 +537,12 @@ class SQLServerManager:
     # BackOffice Specific Queries
     # ========================================================================
 
-    def get_next_quotation_number(self) -> str:
+    def get_next_quotation_number(self, db_id: str = '1') -> str:
         """
         Generate next quotation number using format: [Month][Day][Year][DB_ID][Counter]
 
-        DB ID is extracted from the most recent quotation number.
-        Counter resets daily.
+        Args:
+            db_id: Single character database identifier (e.g., '1', '6')
 
         Returns:
             Next quotation number as string
@@ -549,40 +550,12 @@ class SQLServerManager:
         from datetime import datetime
 
         today = datetime.now()
-        current_year = str(today.year)
 
-        # Step 1: Get the most recent quotation to extract DB ID
-        query_recent = """
-            SELECT TOP 1 QuotationNumber
-            FROM dbo.Quotations_tbl
-            WHERE ISNUMERIC(QuotationNumber) = 1
-            ORDER BY QuotationID DESC
-        """
-        recent = self.execute_query(query_recent)
-
-        if not recent:
-            raise Exception("No existing quotations found to determine DB ID")
-
-        recent_number = str(recent[0]['QuotationNumber'])
-
-        # Step 2: Find the year in the quotation number and extract DB ID
-        year_pos = recent_number.find(current_year)
-        if year_pos == -1:
-            # Try previous year (for year boundary cases)
-            prev_year = str(today.year - 1)
-            year_pos = recent_number.find(prev_year)
-            if year_pos == -1:
-                raise Exception(f"Cannot find year in quotation number: {recent_number}")
-
-        # DB ID is the single digit after the 4-digit year
-        db_id_pos = year_pos + 4
-        db_id = recent_number[db_id_pos]
-
-        # Step 3: Build today's prefix
+        # Build today's prefix: MDYYYY + db_id
         date_prefix = f"{today.month}{today.day}{today.year}"
         full_prefix = f"{date_prefix}{db_id}"
 
-        # Step 4: Find max counter for today
+        # Find max counter for today
         prefix_len = len(full_prefix)
         pattern = f"{full_prefix}%"
 

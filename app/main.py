@@ -310,13 +310,14 @@ def save_quotation_defaults():
         term_id = data.get('term_id')
         quotation_title_prefix = data.get('quotation_title_prefix')
         expiration_days = data.get('expiration_days', 365)
+        db_id = data.get('db_id', '1')
 
         if not store_id:
             return jsonify({'success': False, 'error': 'Missing store_id'}), 400
 
         defaults_id = postgres.upsert_quotation_defaults(
             store_id, status, shipper_id, sales_rep_id, term_id,
-            quotation_title_prefix, expiration_days
+            quotation_title_prefix, expiration_days, db_id
         )
 
         return jsonify({'success': True, 'defaults_id': defaults_id})
