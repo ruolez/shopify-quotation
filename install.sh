@@ -125,6 +125,23 @@ run_migrations() {
         return
     fi
 
+    # Wait for postgres to be ready
+    print_info "Waiting for PostgreSQL to be ready..."
+    local retries=30
+    while [ $retries -gt 0 ]; do
+        if docker compose exec -T postgres pg_isready -U admin -d shopify_quotation > /dev/null 2>&1; then
+            print_success "PostgreSQL is ready"
+            break
+        fi
+        retries=$((retries - 1))
+        sleep 1
+    done
+
+    if [ $retries -eq 0 ]; then
+        print_error "PostgreSQL did not become ready in time"
+        return 1
+    fi
+
     # Run all SQL migration files in order
     for migration in "$APP_DIR/migrations"/*.sql; do
         if [ -f "$migration" ]; then
@@ -132,9 +149,11 @@ run_migrations() {
             print_info "Applying migration: $migration_name"
 
             # Run migration using docker compose exec
-            docker compose exec -T postgres psql -U admin -d shopify_quotation -f "/migrations/$migration_name" 2>/dev/null || {
-                print_warning "Migration $migration_name may have already been applied"
-            }
+            if docker compose exec -T postgres psql -U admin -d shopify_quotation -f "/migrations/$migration_name"; then
+                print_success "Migration $migration_name applied successfully"
+            else
+                print_warning "Migration $migration_name may have already been applied or encountered an issue"
+            fi
         fi
     done
 
