@@ -468,8 +468,8 @@ async function renderQuotationDefaults() {
                 </div>
                 <div class="form-group">
                     <label for="db_id_${store.id}">Database ID (Quotation Number)</label>
-                    <input type="text" id="db_id_${store.id}" maxlength="1" placeholder="1" value="${defaults.db_id || '1'}">
-                    <small class="text-secondary">Single digit used in quotation number format</small>
+                    <input type="text" id="db_id_${store.id}" maxlength="2" placeholder="1" value="${defaults.db_id || '1'}">
+                    <small class="text-secondary">1-2 digits used in quotation number format</small>
                 </div>
                 <button class="btn btn-primary" onclick="saveQuotationDefaults(${store.id})">
                     💾 Save Defaults

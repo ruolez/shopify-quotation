@@ -9,9 +9,11 @@ BEGIN
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'quotation_defaults' AND column_name = 'db_id'
     ) THEN
-        ALTER TABLE quotation_defaults ADD COLUMN db_id VARCHAR(1) DEFAULT '1';
+        ALTER TABLE quotation_defaults ADD COLUMN db_id VARCHAR(2) DEFAULT '1';
         RAISE NOTICE 'Column db_id added to quotation_defaults table';
     ELSE
-        RAISE NOTICE 'Column db_id already exists in quotation_defaults table';
+        -- Ensure column is VARCHAR(2) in case it was created as VARCHAR(1)
+        ALTER TABLE quotation_defaults ALTER COLUMN db_id TYPE VARCHAR(2);
+        RAISE NOTICE 'Column db_id already exists, ensured VARCHAR(2) type';
     END IF;
 END $$;
