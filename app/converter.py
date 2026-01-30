@@ -82,8 +82,9 @@ class QuotationConverter:
             )
 
             # Calculate total from validated products
+            # Convert to float to handle mixed float/Decimal types from different sources
             quotation_total = sum(
-                (p.get('shopify_quantity') or 1) * (p.get('shopify_price') or p.get('UnitPrice') or 0)
+                (p.get('shopify_quantity') or 1) * float(p.get('shopify_price') or p.get('UnitPrice') or 0)
                 for p in validated_products
             )
             quotation_header['QuotationTotal'] = quotation_total
@@ -206,10 +207,11 @@ class QuotationConverter:
             unit_desc = self.backoffice.get_unit_description(product['UnitID'])
 
         # Calculate prices - handle None values explicitly
+        # Convert to float to handle mixed float/Decimal types from different sources
         quantity = product.get('shopify_quantity') or 1
-        unit_price = product.get('shopify_price') or product.get('UnitPrice') or 0
-        original_price = product.get('UnitPrice') or unit_price
-        unit_cost = product.get('UnitCost') or 0
+        unit_price = float(product.get('shopify_price') or product.get('UnitPrice') or 0)
+        original_price = float(product.get('UnitPrice') or unit_price or 0)
+        unit_cost = float(product.get('UnitCost') or 0)
 
         extended_price = quantity * unit_price
         extended_cost = quantity * unit_cost
