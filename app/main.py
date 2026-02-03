@@ -389,11 +389,18 @@ def validate_order_products():
         if not order:
             return jsonify({'success': False, 'error': 'Order not found'}), 404
 
+        # Get exclusion prefixes
+        exclusions = postgres.get_product_exclusions()
+        exclusion_prefixes = [e['prefix'] for e in exclusions]
+
         # Validate products
         backoffice, inventory = get_sqlserver_managers()
         validator = ProductValidator(backoffice, inventory)
 
-        validation_result = validator.validate_order_products(order['line_items'])
+        validation_result = validator.validate_order_products(
+            order['line_items'],
+            exclusion_prefixes=exclusion_prefixes
+        )
 
         return jsonify({
             'success': True,
@@ -423,6 +430,10 @@ def transfer_orders():
         store = postgres.get_shopify_store(store_id)
         if not store:
             return jsonify({'success': False, 'error': 'Store not found'}), 404
+
+        # Get exclusion prefixes
+        exclusions = postgres.get_product_exclusions()
+        exclusion_prefixes = [e['prefix'] for e in exclusions]
 
         # Initialize managers
         client = ShopifyClient(store['shop_url'], store['admin_api_token'])
@@ -455,8 +466,11 @@ def transfer_orders():
                     })
                     continue
 
-                # Validate products
-                validation = validator.validate_order_products(order['line_items'])
+                # Validate products (with exclusion prefixes)
+                validation = validator.validate_order_products(
+                    order['line_items'],
+                    exclusion_prefixes=exclusion_prefixes
+                )
 
                 if not validation['valid']:
                     error_msg = f"Missing products: {', '.join([m['barcode'] for m in validation['missing']])}"
@@ -593,6 +607,55 @@ def delete_failed_transfers():
         return jsonify({'success': True, 'affected_rows': affected})
     except Exception as e:
         logger.error(f"Failed to delete failed records: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# PRODUCT EXCLUSIONS API
+# ============================================================================
+
+@app.route('/api/product-exclusions', methods=['GET'])
+def get_product_exclusions():
+    """Get all product exclusion prefixes"""
+    try:
+        exclusions = postgres.get_product_exclusions()
+        return jsonify({'success': True, 'exclusions': exclusions})
+    except Exception as e:
+        logger.error(f"Failed to get product exclusions: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/product-exclusions', methods=['POST'])
+def add_product_exclusion():
+    """Add new product exclusion prefix"""
+    try:
+        data = request.get_json()
+        prefix = data.get('prefix', '').strip()
+
+        if not prefix:
+            return jsonify({'success': False, 'error': 'Prefix cannot be empty'}), 400
+
+        if len(prefix) > 100:
+            return jsonify({'success': False, 'error': 'Prefix cannot exceed 100 characters'}), 400
+
+        exclusion_id = postgres.add_product_exclusion(prefix)
+        return jsonify({'success': True, 'exclusion_id': exclusion_id})
+    except Exception as e:
+        error_msg = str(e)
+        if 'duplicate key' in error_msg.lower() or 'unique constraint' in error_msg.lower():
+            return jsonify({'success': False, 'error': 'This prefix already exists'}), 400
+        logger.error(f"Failed to add product exclusion: {error_msg}")
+        return jsonify({'success': False, 'error': error_msg}), 500
+
+
+@app.route('/api/product-exclusions/<int:exclusion_id>', methods=['DELETE'])
+def delete_product_exclusion(exclusion_id):
+    """Delete product exclusion by ID"""
+    try:
+        affected = postgres.delete_product_exclusion(exclusion_id)
+        return jsonify({'success': True, 'affected_rows': affected})
+    except Exception as e:
+        logger.error(f"Failed to delete product exclusion: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

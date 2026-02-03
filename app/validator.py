@@ -36,19 +36,21 @@ class ProductValidator:
         self.backoffice = backoffice_manager
         self.inventory = inventory_manager
 
-    def validate_order_products(self, line_items: List[Dict]) -> Dict:
+    def validate_order_products(self, line_items: List[Dict], exclusion_prefixes: List[str] = None) -> Dict:
         """
         Validate all products in order using batch queries
 
         Process:
-        1. Extract all barcodes from line items
-        2. Batch query BackOffice for all barcodes (1 query)
-        3. Batch query Inventory for missing barcodes (1 query)
-        4. Copy missing products from Inventory to BackOffice
-        5. Match products back to line items
+        1. Separate excluded products (matching exclusion prefixes)
+        2. Extract all barcodes from non-excluded line items
+        3. Batch query BackOffice for all barcodes (1 query)
+        4. Batch query Inventory for missing barcodes (1 query)
+        5. Copy missing products from Inventory to BackOffice
+        6. Match products back to line items
 
         Args:
             line_items: List of Shopify line items with barcode, quantity, etc.
+            exclusion_prefixes: List of prefix strings to exclude products by name
 
         Returns:
             Dict with validation results:
@@ -57,6 +59,7 @@ class ProductValidator:
                 'products': List[Dict],  # Validated products with database IDs
                 'missing': List[Dict],   # Products not found in any database
                 'copied': List[Dict],    # Products copied from Inventory
+                'excluded': List[Dict],  # Products excluded by prefix rules
                 'errors': List[str]
             }
         """
@@ -65,6 +68,7 @@ class ProductValidator:
             'products': [],
             'missing': [],
             'copied': [],
+            'excluded': [],
             'errors': [],
             'diagnostics': {
                 'barcodes_searched': [],
@@ -74,11 +78,41 @@ class ProductValidator:
             }
         }
 
+        # Step 1: Separate excluded products
+        excluded_items = []
+        items_to_validate = []
+        prefixes = exclusion_prefixes or []
+
+        for item in line_items:
+            name = item.get('name', '')
+            if name and any(name.lower().startswith(p.lower()) for p in prefixes):
+                excluded_items.append(item)
+            else:
+                items_to_validate.append(item)
+
+        # Add excluded items to result
+        for item in excluded_items:
+            name = item.get('name', '')
+            matched_prefix = next((p for p in prefixes if name.lower().startswith(p.lower())), '')
+            result['excluded'].append({
+                'barcode': item.get('barcode', 'N/A'),
+                'name': name,
+                'sku': item.get('sku', ''),
+                'quantity': item.get('quantity', 0),
+                'matched_prefix': matched_prefix
+            })
+
+        logger.info(f"Excluded {len(excluded_items)} products by prefix rules, validating {len(items_to_validate)} products")
+
+        # If all products are excluded, return early
+        if not items_to_validate:
+            return result
+
         # Build mapping of barcode -> line item(s)
         barcode_to_items = {}
         items_without_barcode = []
 
-        for item in line_items:
+        for item in items_to_validate:
             barcode = item.get('barcode', '').strip()
 
             if not barcode:

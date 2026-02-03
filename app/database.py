@@ -421,6 +421,33 @@ class PostgreSQLManager:
         result = self.execute_query(query, (store_id, order_id))
         return result[0]['count'] > 0 if result else False
 
+    # ========================================================================
+    # Product Exclusions CRUD
+    # ========================================================================
+
+    def get_product_exclusions(self) -> List[Dict]:
+        """Get all product exclusion prefixes"""
+        query = """
+            SELECT id, prefix, created_at
+            FROM product_exclusions
+            ORDER BY prefix
+        """
+        return self.execute_query(query)
+
+    def add_product_exclusion(self, prefix: str) -> int:
+        """Add new product exclusion prefix"""
+        query = """
+            INSERT INTO product_exclusions (prefix)
+            VALUES (%s)
+            RETURNING id
+        """
+        return self.execute_insert(query, (prefix,))
+
+    def delete_product_exclusion(self, exclusion_id: int) -> int:
+        """Delete product exclusion by ID"""
+        query = "DELETE FROM product_exclusions WHERE id = %s"
+        return self.execute_update(query, (exclusion_id,))
+
 
 class SQLServerManager:
     """Manages MS SQL Server connections to BackOffice and Inventory databases"""

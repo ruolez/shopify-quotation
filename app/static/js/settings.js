@@ -5,61 +5,91 @@
 
 // State management
 const state = {
-    stores: [],
-    sqlConnections: {},
-    customers: [],
-    confirmCallback: null
+  stores: [],
+  sqlConnections: {},
+  customers: [],
+  exclusions: [],
+  confirmCallback: null,
 };
 
 // DOM Elements
 const elements = {
-    storesContainer: document.getElementById('storesContainer'),
-    customerMappingsContainer: document.getElementById('customerMappingsContainer'),
-    quotationDefaultsContainer: document.getElementById('quotationDefaultsContainer')
+  storesContainer: document.getElementById("storesContainer"),
+  customerMappingsContainer: document.getElementById(
+    "customerMappingsContainer",
+  ),
+  quotationDefaultsContainer: document.getElementById(
+    "quotationDefaultsContainer",
+  ),
+  exclusionsContainer: document.getElementById("exclusionsContainer"),
 };
 
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
 
-document.addEventListener('DOMContentLoaded', async () => {
-    await Promise.all([
-        loadStores(),
-        loadSQLConnections(),
-        loadCustomers()
-    ]);
+document.addEventListener("DOMContentLoaded", async () => {
+  await Promise.all([
+    loadStores(),
+    loadSQLConnections(),
+    loadCustomers(),
+    loadProductExclusions(),
+  ]);
 
-    await renderCustomerMappings();
-    await renderQuotationDefaults();
+  await renderCustomerMappings();
+  await renderQuotationDefaults();
 
-    setupEventListeners();
+  setupEventListeners();
 });
 
 function setupEventListeners() {
-    // Store management
-    document.getElementById('addStoreBtn').addEventListener('click', () => openStoreModal());
-    document.getElementById('saveStore').addEventListener('click', saveStore);
-    document.getElementById('cancelStoreModal').addEventListener('click', closeStoreModal);
+  // Store management
+  document
+    .getElementById("addStoreBtn")
+    .addEventListener("click", () => openStoreModal());
+  document.getElementById("saveStore").addEventListener("click", saveStore);
+  document
+    .getElementById("cancelStoreModal")
+    .addEventListener("click", closeStoreModal);
 
-    // SQL connections
-    document.getElementById('backofficeForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        saveSQLConnection('backoffice');
-    });
-    document.getElementById('inventoryForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        saveSQLConnection('inventory');
-    });
-    document.getElementById('testBackofficeBtn').addEventListener('click', () => testSQLConnection('backoffice'));
-    document.getElementById('testInventoryBtn').addEventListener('click', () => testSQLConnection('inventory'));
+  // SQL connections
+  document.getElementById("backofficeForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    saveSQLConnection("backoffice");
+  });
+  document.getElementById("inventoryForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    saveSQLConnection("inventory");
+  });
+  document
+    .getElementById("testBackofficeBtn")
+    .addEventListener("click", () => testSQLConnection("backoffice"));
+  document
+    .getElementById("testInventoryBtn")
+    .addEventListener("click", () => testSQLConnection("inventory"));
 
-    // Confirmation modal
-    document.getElementById('cancelConfirm').addEventListener('click', closeConfirmModal);
-    document.getElementById('confirmAction').addEventListener('click', () => {
-        if (state.confirmCallback) {
-            state.confirmCallback();
-        }
-        closeConfirmModal();
+  // Confirmation modal
+  document
+    .getElementById("cancelConfirm")
+    .addEventListener("click", closeConfirmModal);
+  document.getElementById("confirmAction").addEventListener("click", () => {
+    if (state.confirmCallback) {
+      state.confirmCallback();
+    }
+    closeConfirmModal();
+  });
+
+  // Product exclusions
+  document
+    .getElementById("addExclusionBtn")
+    .addEventListener("click", addProductExclusion);
+  document
+    .getElementById("newExclusionPrefix")
+    .addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addProductExclusion();
+      }
     });
 }
 
@@ -68,29 +98,32 @@ function setupEventListeners() {
 // ============================================================================
 
 async function loadStores() {
-    try {
-        const response = await fetch('/api/stores');
-        const data = await response.json();
+  try {
+    const response = await fetch("/api/stores");
+    const data = await response.json();
 
-        if (data.success) {
-            state.stores = data.stores;
-            renderStores();
-        }
-    } catch (error) {
-        console.error('Failed to load stores:', error);
-        showToast('Failed to load stores: ' + error.message, 'error');
+    if (data.success) {
+      state.stores = data.stores;
+      renderStores();
     }
+  } catch (error) {
+    console.error("Failed to load stores:", error);
+    showToast("Failed to load stores: " + error.message, "error");
+  }
 }
 
 function renderStores() {
-    const container = elements.storesContainer;
+  const container = elements.storesContainer;
 
-    if (state.stores.length === 0) {
-        container.innerHTML = '<p class="text-secondary">No stores configured yet</p>';
-        return;
-    }
+  if (state.stores.length === 0) {
+    container.innerHTML =
+      '<p class="text-secondary">No stores configured yet</p>';
+    return;
+  }
 
-    container.innerHTML = state.stores.map(store => `
+  container.innerHTML = state.stores
+    .map(
+      (store) => `
         <div class="card mt-2" style="padding: 16px; background: var(--background-alt);">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
@@ -98,8 +131,8 @@ function renderStores() {
                     <p class="text-secondary" style="margin: 4px 0;">
                         ${store.shop_url}
                     </p>
-                    <span class="badge ${store.is_active ? 'badge-success' : 'badge-error'}">
-                        ${store.is_active ? 'Active' : 'Inactive'}
+                    <span class="badge ${store.is_active ? "badge-success" : "badge-error"}">
+                        ${store.is_active ? "Active" : "Inactive"}
                     </span>
                 </div>
                 <div class="table-actions">
@@ -115,120 +148,125 @@ function renderStores() {
                 </div>
             </div>
         </div>
-    `).join('');
+    `,
+    )
+    .join("");
 }
 
 function openStoreModal(storeId = null) {
-    const modal = document.getElementById('storeModal');
-    const title = document.getElementById('storeModalTitle');
+  const modal = document.getElementById("storeModal");
+  const title = document.getElementById("storeModalTitle");
 
-    if (storeId) {
-        const store = state.stores.find(s => s.id === storeId);
-        if (store) {
-            title.textContent = 'Edit Shopify Store';
-            document.getElementById('store_id').value = store.id;
-            document.getElementById('store_name').value = store.name;
-            document.getElementById('shop_url').value = store.shop_url;
-            document.getElementById('api_token').value = store.admin_api_token;
-        }
-    } else {
-        title.textContent = 'Add Shopify Store';
-        document.getElementById('storeForm').reset();
-        document.getElementById('store_id').value = '';
+  if (storeId) {
+    const store = state.stores.find((s) => s.id === storeId);
+    if (store) {
+      title.textContent = "Edit Shopify Store";
+      document.getElementById("store_id").value = store.id;
+      document.getElementById("store_name").value = store.name;
+      document.getElementById("shop_url").value = store.shop_url;
+      document.getElementById("api_token").value = store.admin_api_token;
     }
+  } else {
+    title.textContent = "Add Shopify Store";
+    document.getElementById("storeForm").reset();
+    document.getElementById("store_id").value = "";
+  }
 
-    modal.classList.add('active');
+  modal.classList.add("active");
 }
 
 function closeStoreModal() {
-    document.getElementById('storeModal').classList.remove('active');
+  document.getElementById("storeModal").classList.remove("active");
 }
 
 async function saveStore() {
-    const storeId = document.getElementById('store_id').value;
-    const name = document.getElementById('store_name').value.trim();
-    const shopUrl = document.getElementById('shop_url').value.trim();
-    const apiToken = document.getElementById('api_token').value.trim();
+  const storeId = document.getElementById("store_id").value;
+  const name = document.getElementById("store_name").value.trim();
+  const shopUrl = document.getElementById("shop_url").value.trim();
+  const apiToken = document.getElementById("api_token").value.trim();
 
-    if (!name || !shopUrl || !apiToken) {
-        showToast('Please fill all fields', 'warning');
-        return;
+  if (!name || !shopUrl || !apiToken) {
+    showToast("Please fill all fields", "warning");
+    return;
+  }
+
+  try {
+    const url = storeId ? `/api/stores/${storeId}` : "/api/stores";
+    const method = storeId ? "PUT" : "POST";
+
+    const response = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, shop_url: shopUrl, api_token: apiToken }),
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      showToast(
+        `Store ${storeId ? "updated" : "added"} successfully`,
+        "success",
+      );
+      closeStoreModal();
+      await loadStores();
+      await renderCustomerMappings();
+      await renderQuotationDefaults();
+    } else {
+      throw new Error(data.error || "Failed to save store");
     }
-
-    try {
-        const url = storeId ? `/api/stores/${storeId}` : '/api/stores';
-        const method = storeId ? 'PUT' : 'POST';
-
-        const response = await fetch(url, {
-            method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, shop_url: shopUrl, api_token: apiToken })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            showToast(`Store ${storeId ? 'updated' : 'added'} successfully`, 'success');
-            closeStoreModal();
-            await loadStores();
-            await renderCustomerMappings();
-            await renderQuotationDefaults();
-        } else {
-            throw new Error(data.error || 'Failed to save store');
-        }
-    } catch (error) {
-        console.error('Failed to save store:', error);
-        showToast('Failed to save store: ' + error.message, 'error');
-    }
+  } catch (error) {
+    console.error("Failed to save store:", error);
+    showToast("Failed to save store: " + error.message, "error");
+  }
 }
 
 async function testStoreConnection(storeId) {
-    try {
-        const response = await fetch(`/api/stores/${storeId}/test`, {
-            method: 'POST'
+  try {
+    const response = await fetch(`/api/stores/${storeId}/test`, {
+      method: "POST",
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      showToast("✓ " + data.message, "success");
+    } else {
+      showToast("✗ " + data.message, "error");
+    }
+  } catch (error) {
+    console.error("Connection test failed:", error);
+    showToast("Connection test failed: " + error.message, "error");
+  }
+}
+
+function deleteStore(storeId) {
+  const store = state.stores.find((s) => s.id === storeId);
+  if (!store) return;
+
+  showConfirmModal(
+    `Are you sure you want to delete "${store.name}"? This will also delete all associated settings and history.`,
+    async () => {
+      try {
+        const response = await fetch(`/api/stores/${storeId}`, {
+          method: "DELETE",
         });
 
         const data = await response.json();
 
         if (data.success) {
-            showToast('✓ ' + data.message, 'success');
+          showToast("Store deleted successfully", "success");
+          await loadStores();
+          await renderCustomerMappings();
+          await renderQuotationDefaults();
         } else {
-            showToast('✗ ' + data.message, 'error');
+          throw new Error(data.error || "Failed to delete store");
         }
-    } catch (error) {
-        console.error('Connection test failed:', error);
-        showToast('Connection test failed: ' + error.message, 'error');
-    }
-}
-
-function deleteStore(storeId) {
-    const store = state.stores.find(s => s.id === storeId);
-    if (!store) return;
-
-    showConfirmModal(
-        `Are you sure you want to delete "${store.name}"? This will also delete all associated settings and history.`,
-        async () => {
-            try {
-                const response = await fetch(`/api/stores/${storeId}`, {
-                    method: 'DELETE'
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    showToast('Store deleted successfully', 'success');
-                    await loadStores();
-                    await renderCustomerMappings();
-                    await renderQuotationDefaults();
-                } else {
-                    throw new Error(data.error || 'Failed to delete store');
-                }
-            } catch (error) {
-                console.error('Failed to delete store:', error);
-                showToast('Failed to delete store: ' + error.message, 'error');
-            }
-        }
-    );
+      } catch (error) {
+        console.error("Failed to delete store:", error);
+        showToast("Failed to delete store: " + error.message, "error");
+      }
+    },
+  );
 }
 
 // ============================================================================
@@ -236,93 +274,98 @@ function deleteStore(storeId) {
 // ============================================================================
 
 async function loadSQLConnections() {
-    try {
-        const response = await fetch('/api/sql-connections');
-        const data = await response.json();
+  try {
+    const response = await fetch("/api/sql-connections");
+    const data = await response.json();
 
-        if (data.success) {
-            data.connections.forEach(conn => {
-                state.sqlConnections[conn.connection_type] = conn;
-                populateSQLForm(conn.connection_type, conn);
-            });
-        }
-    } catch (error) {
-        console.error('Failed to load SQL connections:', error);
-        showToast('Failed to load SQL connections: ' + error.message, 'error');
+    if (data.success) {
+      data.connections.forEach((conn) => {
+        state.sqlConnections[conn.connection_type] = conn;
+        populateSQLForm(conn.connection_type, conn);
+      });
     }
+  } catch (error) {
+    console.error("Failed to load SQL connections:", error);
+    showToast("Failed to load SQL connections: " + error.message, "error");
+  }
 }
 
 function populateSQLForm(type, conn) {
-    const prefix = type === 'backoffice' ? 'backoffice' : 'inventory';
+  const prefix = type === "backoffice" ? "backoffice" : "inventory";
 
-    document.getElementById(`${prefix}_host`).value = conn.host || '';
-    document.getElementById(`${prefix}_port`).value = conn.port || 1433;
-    document.getElementById(`${prefix}_database`).value = conn.database_name || '';
-    document.getElementById(`${prefix}_username`).value = conn.username || '';
-    // Don't populate password for security
+  document.getElementById(`${prefix}_host`).value = conn.host || "";
+  document.getElementById(`${prefix}_port`).value = conn.port || 1433;
+  document.getElementById(`${prefix}_database`).value =
+    conn.database_name || "";
+  document.getElementById(`${prefix}_username`).value = conn.username || "";
+  // Don't populate password for security
 }
 
 async function saveSQLConnection(type) {
-    const prefix = type === 'backoffice' ? 'backoffice' : 'inventory';
+  const prefix = type === "backoffice" ? "backoffice" : "inventory";
 
-    const host = document.getElementById(`${prefix}_host`).value.trim();
-    const port = parseInt(document.getElementById(`${prefix}_port`).value) || 1433;
-    const database = document.getElementById(`${prefix}_database`).value.trim();
-    const username = document.getElementById(`${prefix}_username`).value.trim();
-    const password = document.getElementById(`${prefix}_password`).value;
+  const host = document.getElementById(`${prefix}_host`).value.trim();
+  const port =
+    parseInt(document.getElementById(`${prefix}_port`).value) || 1433;
+  const database = document.getElementById(`${prefix}_database`).value.trim();
+  const username = document.getElementById(`${prefix}_username`).value.trim();
+  const password = document.getElementById(`${prefix}_password`).value;
 
-    if (!host || !database || !username || !password) {
-        showToast('Please fill all fields', 'warning');
-        return;
+  if (!host || !database || !username || !password) {
+    showToast("Please fill all fields", "warning");
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/sql-connections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        connection_type: type,
+        host,
+        port,
+        database_name: database,
+        username,
+        password,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      showToast(
+        `${type === "backoffice" ? "BackOffice" : "Inventory"} connection saved successfully`,
+        "success",
+      );
+      // Clear password field
+      document.getElementById(`${prefix}_password`).value = "";
+      await loadSQLConnections();
+    } else {
+      throw new Error(data.error || "Failed to save connection");
     }
-
-    try {
-        const response = await fetch('/api/sql-connections', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                connection_type: type,
-                host,
-                port,
-                database_name: database,
-                username,
-                password
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            showToast(`${type === 'backoffice' ? 'BackOffice' : 'Inventory'} connection saved successfully`, 'success');
-            // Clear password field
-            document.getElementById(`${prefix}_password`).value = '';
-            await loadSQLConnections();
-        } else {
-            throw new Error(data.error || 'Failed to save connection');
-        }
-    } catch (error) {
-        console.error('Failed to save SQL connection:', error);
-        showToast('Failed to save connection: ' + error.message, 'error');
-    }
+  } catch (error) {
+    console.error("Failed to save SQL connection:", error);
+    showToast("Failed to save connection: " + error.message, "error");
+  }
 }
 
 async function testSQLConnection(type) {
-    try {
-        const response = await fetch(`/api/sql-connections/${type}/test`, {
-            method: 'POST'
-        });
+  try {
+    const response = await fetch(`/api/sql-connections/${type}/test`, {
+      method: "POST",
+    });
 
-        const data = await response.json();
+    const data = await response.json();
 
-        if (data.success) {
-            showToast('✓ ' + data.message, 'success');
-        } else {
-            showToast('✗ ' + data.message, 'error');
-        }
-    } catch (error) {
-        console.error('Connection test failed:', error);
-        showToast('Connection test failed: ' + error.message, 'error');
+    if (data.success) {
+      showToast("✓ " + data.message, "success");
+    } else {
+      showToast("✗ " + data.message, "error");
     }
+  } catch (error) {
+    console.error("Connection test failed:", error);
+    showToast("Connection test failed: " + error.message, "error");
+  }
 }
 
 // ============================================================================
@@ -330,95 +373,103 @@ async function testSQLConnection(type) {
 // ============================================================================
 
 async function loadCustomers() {
-    try {
-        const response = await fetch('/api/customers');
-        const data = await response.json();
+  try {
+    const response = await fetch("/api/customers");
+    const data = await response.json();
 
-        if (data.success) {
-            state.customers = data.customers;
-        }
-    } catch (error) {
-        console.error('Failed to load customers:', error);
-        // Don't show error toast here as SQL connection might not be configured yet
+    if (data.success) {
+      state.customers = data.customers;
     }
+  } catch (error) {
+    console.error("Failed to load customers:", error);
+    // Don't show error toast here as SQL connection might not be configured yet
+  }
 }
 
 async function renderCustomerMappings() {
-    const container = elements.customerMappingsContainer;
+  const container = elements.customerMappingsContainer;
 
-    if (state.stores.length === 0) {
-        container.innerHTML = '<p class="text-secondary">Add a Shopify store first</p>';
-        return;
-    }
+  if (state.stores.length === 0) {
+    container.innerHTML =
+      '<p class="text-secondary">Add a Shopify store first</p>';
+    return;
+  }
 
-    if (state.customers.length === 0) {
-        container.innerHTML = '<p class="text-warning">⚠️ Configure BackOffice SQL connection first to load customers</p>';
-        return;
-    }
+  if (state.customers.length === 0) {
+    container.innerHTML =
+      '<p class="text-warning">⚠️ Configure BackOffice SQL connection first to load customers</p>';
+    return;
+  }
 
-    const html = await Promise.all(state.stores.map(async store => {
-        // Get current mapping
-        const response = await fetch(`/api/customer-mappings/${store.id}`);
-        const data = await response.json();
-        const mapping = data.mapping;
+  const html = await Promise.all(
+    state.stores.map(async (store) => {
+      // Get current mapping
+      const response = await fetch(`/api/customer-mappings/${store.id}`);
+      const data = await response.json();
+      const mapping = data.mapping;
 
-        return `
+      return `
             <div class="form-group">
                 <label for="customer_${store.id}">
                     <strong>Shopify Store:</strong> ${store.name} → <strong>BackOffice Customer:</strong>
                 </label>
                 <select id="customer_${store.id}" class="form-control customer-select" data-store-id="${store.id}">
                     <option value="">Select BackOffice customer for "${store.name}"...</option>
-                    ${state.customers.map(c => `
-                        <option value="${c.CustomerID}" ${mapping && mapping.customer_id === c.CustomerID ? 'selected' : ''}>
-                            ${c.BusinessName} (${c.AccountNo || 'N/A'})
+                    ${state.customers
+                      .map(
+                        (c) => `
+                        <option value="${c.CustomerID}" ${mapping && mapping.customer_id === c.CustomerID ? "selected" : ""}>
+                            ${c.BusinessName} (${c.AccountNo || "N/A"})
                         </option>
-                    `).join('')}
+                    `,
+                      )
+                      .join("")}
                 </select>
             </div>
         `;
-    }));
+    }),
+  );
 
-    container.innerHTML = html.join('');
+  container.innerHTML = html.join("");
 
-    // Add change listeners
-    document.querySelectorAll('.customer-select').forEach(select => {
-        select.addEventListener('change', async (e) => {
-            const storeId = parseInt(e.target.dataset.storeId);
-            const customerId = parseInt(e.target.value);
+  // Add change listeners
+  document.querySelectorAll(".customer-select").forEach((select) => {
+    select.addEventListener("change", async (e) => {
+      const storeId = parseInt(e.target.dataset.storeId);
+      const customerId = parseInt(e.target.value);
 
-            if (!customerId) return;
+      if (!customerId) return;
 
-            await saveCustomerMapping(storeId, customerId);
-        });
+      await saveCustomerMapping(storeId, customerId);
     });
+  });
 }
 
 async function saveCustomerMapping(storeId, customerId) {
-    const customer = state.customers.find(c => c.CustomerID === customerId);
+  const customer = state.customers.find((c) => c.CustomerID === customerId);
 
-    try {
-        const response = await fetch('/api/customer-mappings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                store_id: storeId,
-                customer_id: customerId,
-                business_name: customer?.BusinessName
-            })
-        });
+  try {
+    const response = await fetch("/api/customer-mappings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        store_id: storeId,
+        customer_id: customerId,
+        business_name: customer?.BusinessName,
+      }),
+    });
 
-        const data = await response.json();
+    const data = await response.json();
 
-        if (data.success) {
-            showToast('Customer mapping saved successfully', 'success');
-        } else {
-            throw new Error(data.error || 'Failed to save mapping');
-        }
-    } catch (error) {
-        console.error('Failed to save customer mapping:', error);
-        showToast('Failed to save mapping: ' + error.message, 'error');
+    if (data.success) {
+      showToast("Customer mapping saved successfully", "success");
+    } else {
+      throw new Error(data.error || "Failed to save mapping");
     }
+  } catch (error) {
+    console.error("Failed to save customer mapping:", error);
+    showToast("Failed to save mapping: " + error.message, "error");
+  }
 }
 
 // ============================================================================
@@ -426,20 +477,22 @@ async function saveCustomerMapping(storeId, customerId) {
 // ============================================================================
 
 async function renderQuotationDefaults() {
-    const container = elements.quotationDefaultsContainer;
+  const container = elements.quotationDefaultsContainer;
 
-    if (state.stores.length === 0) {
-        container.innerHTML = '<p class="text-secondary">Add a Shopify store first</p>';
-        return;
-    }
+  if (state.stores.length === 0) {
+    container.innerHTML =
+      '<p class="text-secondary">Add a Shopify store first</p>';
+    return;
+  }
 
-    const html = await Promise.all(state.stores.map(async store => {
-        // Get current defaults
-        const response = await fetch(`/api/quotation-defaults/${store.id}`);
-        const data = await response.json();
-        const defaults = data.defaults || {};
+  const html = await Promise.all(
+    state.stores.map(async (store) => {
+      // Get current defaults
+      const response = await fetch(`/api/quotation-defaults/${store.id}`);
+      const data = await response.json();
+      const defaults = data.defaults || {};
 
-        return `
+      return `
             <div class="card mt-2" style="padding: 16px; background: var(--background-alt);">
                 <h4>${store.name}</h4>
                 <div class="form-group">
@@ -448,19 +501,19 @@ async function renderQuotationDefaults() {
                 </div>
                 <div class="form-group">
                     <label for="shipper_id_${store.id}">Shipper ID <span class="optional-label">(optional)</span></label>
-                    <input type="number" id="shipper_id_${store.id}" placeholder="Shipper ID" value="${defaults.shipper_id || ''}">
+                    <input type="number" id="shipper_id_${store.id}" placeholder="Shipper ID" value="${defaults.shipper_id || ""}">
                 </div>
                 <div class="form-group">
                     <label for="sales_rep_id_${store.id}">Sales Rep ID <span class="optional-label">(optional)</span></label>
-                    <input type="number" id="sales_rep_id_${store.id}" placeholder="Sales Rep ID" value="${defaults.sales_rep_id || ''}">
+                    <input type="number" id="sales_rep_id_${store.id}" placeholder="Sales Rep ID" value="${defaults.sales_rep_id || ""}">
                 </div>
                 <div class="form-group">
                     <label for="term_id_${store.id}">Term ID <span class="optional-label">(optional)</span></label>
-                    <input type="number" id="term_id_${store.id}" placeholder="Term ID" value="${defaults.term_id || ''}">
+                    <input type="number" id="term_id_${store.id}" placeholder="Term ID" value="${defaults.term_id || ""}">
                 </div>
                 <div class="form-group">
                     <label for="title_prefix_${store.id}">Quotation Title Prefix</label>
-                    <input type="text" id="title_prefix_${store.id}" placeholder="Shopify Order" value="${defaults.quotation_title_prefix || 'Shopify Order'}">
+                    <input type="text" id="title_prefix_${store.id}" placeholder="Shopify Order" value="${defaults.quotation_title_prefix || "Shopify Order"}">
                 </div>
                 <div class="form-group">
                     <label for="expiration_days_${store.id}">Expiration Days</label>
@@ -468,7 +521,7 @@ async function renderQuotationDefaults() {
                 </div>
                 <div class="form-group">
                     <label for="db_id_${store.id}">Database ID (Quotation Number)</label>
-                    <input type="text" id="db_id_${store.id}" maxlength="2" placeholder="1" value="${defaults.db_id || '1'}">
+                    <input type="text" id="db_id_${store.id}" maxlength="2" placeholder="1" value="${defaults.db_id || "1"}">
                     <small class="text-secondary">1-2 digits used in quotation number format</small>
                 </div>
                 <button class="btn btn-primary" onclick="saveQuotationDefaults(${store.id})">
@@ -476,52 +529,55 @@ async function renderQuotationDefaults() {
                 </button>
             </div>
         `;
-    }));
+    }),
+  );
 
-    container.innerHTML = html.join('');
+  container.innerHTML = html.join("");
 }
 
 async function saveQuotationDefaults(storeId) {
-    const getValue = (id) => {
-        const val = document.getElementById(id).value.trim();
-        return val === '' ? null : (isNaN(val) ? val : parseInt(val));
-    };
+  const getValue = (id) => {
+    const val = document.getElementById(id).value.trim();
+    return val === "" ? null : isNaN(val) ? val : parseInt(val);
+  };
 
-    const status = getValue(`status_${storeId}`);
-    const shipperId = getValue(`shipper_id_${storeId}`);
-    const salesRepId = getValue(`sales_rep_id_${storeId}`);
-    const termId = getValue(`term_id_${storeId}`);
-    const titlePrefix = document.getElementById(`title_prefix_${storeId}`).value.trim();
-    const expirationDays = getValue(`expiration_days_${storeId}`) || 365;
-    const dbId = document.getElementById(`db_id_${storeId}`).value.trim() || '1';
+  const status = getValue(`status_${storeId}`);
+  const shipperId = getValue(`shipper_id_${storeId}`);
+  const salesRepId = getValue(`sales_rep_id_${storeId}`);
+  const termId = getValue(`term_id_${storeId}`);
+  const titlePrefix = document
+    .getElementById(`title_prefix_${storeId}`)
+    .value.trim();
+  const expirationDays = getValue(`expiration_days_${storeId}`) || 365;
+  const dbId = document.getElementById(`db_id_${storeId}`).value.trim() || "1";
 
-    try {
-        const response = await fetch('/api/quotation-defaults', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                store_id: storeId,
-                status,
-                shipper_id: shipperId,
-                sales_rep_id: salesRepId,
-                term_id: termId,
-                quotation_title_prefix: titlePrefix,
-                expiration_days: expirationDays,
-                db_id: dbId
-            })
-        });
+  try {
+    const response = await fetch("/api/quotation-defaults", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        store_id: storeId,
+        status,
+        shipper_id: shipperId,
+        sales_rep_id: salesRepId,
+        term_id: termId,
+        quotation_title_prefix: titlePrefix,
+        expiration_days: expirationDays,
+        db_id: dbId,
+      }),
+    });
 
-        const data = await response.json();
+    const data = await response.json();
 
-        if (data.success) {
-            showToast('Quotation defaults saved successfully', 'success');
-        } else {
-            throw new Error(data.error || 'Failed to save defaults');
-        }
-    } catch (error) {
-        console.error('Failed to save quotation defaults:', error);
-        showToast('Failed to save defaults: ' + error.message, 'error');
+    if (data.success) {
+      showToast("Quotation defaults saved successfully", "success");
+    } else {
+      throw new Error(data.error || "Failed to save defaults");
     }
+  } catch (error) {
+    console.error("Failed to save quotation defaults:", error);
+    showToast("Failed to save defaults: " + error.message, "error");
+  }
 }
 
 // Make this function global so it can be called from inline onclick
@@ -529,38 +585,141 @@ window.saveQuotationDefaults = saveQuotationDefaults;
 window.testStoreConnection = testStoreConnection;
 window.openStoreModal = openStoreModal;
 window.deleteStore = deleteStore;
+window.deleteProductExclusion = deleteProductExclusion;
+
+// ============================================================================
+// PRODUCT EXCLUSIONS
+// ============================================================================
+
+async function loadProductExclusions() {
+  try {
+    const response = await fetch("/api/product-exclusions");
+    const data = await response.json();
+
+    if (data.success) {
+      state.exclusions = data.exclusions;
+      renderProductExclusions();
+    }
+  } catch (error) {
+    console.error("Failed to load product exclusions:", error);
+    showToast("Failed to load product exclusions: " + error.message, "error");
+  }
+}
+
+function renderProductExclusions() {
+  const container = elements.exclusionsContainer;
+
+  if (state.exclusions.length === 0) {
+    container.innerHTML =
+      '<p class="text-secondary">No exclusion rules configured. Products matching exclusion prefixes will be skipped during transfer.</p>';
+    return;
+  }
+
+  container.innerHTML = `
+        <div class="exclusions-list">
+            ${state.exclusions
+              .map(
+                (excl) => `
+                <div class="exclusion-item" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--background-alt); border-radius: 8px; margin-bottom: 8px;">
+                    <span style="font-family: var(--font-mono); font-size: 14px;">${excl.prefix}</span>
+                    <button class="btn btn-small btn-error" onclick="deleteProductExclusion(${excl.id}, '${excl.prefix.replace(/'/g, "\\'")}')">
+                        ✕
+                    </button>
+                </div>
+            `,
+              )
+              .join("")}
+        </div>
+    `;
+}
+
+async function addProductExclusion() {
+  const input = document.getElementById("newExclusionPrefix");
+  const prefix = input.value.trim();
+
+  if (!prefix) {
+    showToast("Please enter a prefix", "warning");
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/product-exclusions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prefix }),
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      showToast(`Exclusion prefix "${prefix}" added`, "success");
+      input.value = "";
+      await loadProductExclusions();
+    } else {
+      throw new Error(data.error || "Failed to add exclusion");
+    }
+  } catch (error) {
+    console.error("Failed to add product exclusion:", error);
+    showToast("Failed to add exclusion: " + error.message, "error");
+  }
+}
+
+function deleteProductExclusion(exclusionId, prefix) {
+  showConfirmModal(
+    `Remove exclusion prefix "${prefix}"? Products starting with this name will no longer be skipped.`,
+    async () => {
+      try {
+        const response = await fetch(`/api/product-exclusions/${exclusionId}`, {
+          method: "DELETE",
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          showToast(`Exclusion prefix "${prefix}" removed`, "success");
+          await loadProductExclusions();
+        } else {
+          throw new Error(data.error || "Failed to delete exclusion");
+        }
+      } catch (error) {
+        console.error("Failed to delete product exclusion:", error);
+        showToast("Failed to delete exclusion: " + error.message, "error");
+      }
+    },
+  );
+}
 
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
 
 function showConfirmModal(message, callback) {
-    document.getElementById('confirmMessage').textContent = message;
-    state.confirmCallback = callback;
-    document.getElementById('confirmModal').classList.add('active');
+  document.getElementById("confirmMessage").textContent = message;
+  state.confirmCallback = callback;
+  document.getElementById("confirmModal").classList.add("active");
 }
 
 function closeConfirmModal() {
-    document.getElementById('confirmModal').classList.remove('active');
-    state.confirmCallback = null;
+  document.getElementById("confirmModal").classList.remove("active");
+  state.confirmCallback = null;
 }
 
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toastContainer');
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
+function showToast(message, type = "info") {
+  const container = document.getElementById("toastContainer");
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
 
-    toast.innerHTML = `
+  toast.innerHTML = `
         <div class="toast-icon"></div>
         <div class="toast-content">
             <div class="toast-message">${message}</div>
         </div>
     `;
 
-    container.appendChild(toast);
+  container.appendChild(toast);
 
-    setTimeout(() => {
-        toast.classList.add('removing');
-        setTimeout(() => toast.remove(), 300);
-    }, 4500);
+  setTimeout(() => {
+    toast.classList.add("removing");
+    setTimeout(() => toast.remove(), 300);
+  }, 4500);
 }

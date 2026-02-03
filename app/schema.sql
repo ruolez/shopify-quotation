@@ -141,3 +141,17 @@ COMMENT ON TABLE sql_connections IS 'MS SQL Server connection details for BackOf
 COMMENT ON TABLE customer_mappings IS 'Maps each Shopify store to a specific CustomerID in BackOffice Customers_tbl';
 COMMENT ON TABLE quotation_defaults IS 'Default values used when creating quotations from Shopify orders';
 COMMENT ON TABLE transfer_history IS 'Tracks all order transfer attempts with success/failure status';
+
+-- ============================================================================
+-- Table: product_exclusions
+-- Purpose: Global prefix rules to skip products during transfer
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS product_exclusions (
+    id SERIAL PRIMARY KEY,
+    prefix VARCHAR(100) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_product_exclusions_prefix ON product_exclusions(prefix);
+
+COMMENT ON TABLE product_exclusions IS 'Global prefix-based rules to exclude products from transfer';

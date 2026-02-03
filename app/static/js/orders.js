@@ -431,6 +431,38 @@ function showValidationModal(validation, orderName) {
         `;
   }
 
+  // Show excluded products
+  if (validation.excluded && validation.excluded.length > 0) {
+    html += `
+            <h4 class="mt-3">⊘ Excluded Products (${validation.excluded.length})</h4>
+            <p class="text-secondary">These products match exclusion rules and will be skipped:</p>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Product Name</th>
+                            <th>Qty</th>
+                            <th>Matched Rule</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${validation.excluded
+                          .map(
+                            (e) => `
+                            <tr style="opacity: 0.7;">
+                                <td style="text-decoration: line-through;">${e.name}</td>
+                                <td class="text-center">${e.quantity}</td>
+                                <td><span class="badge" style="background: var(--text-secondary); color: white;">prefix: "${e.matched_prefix}"</span></td>
+                            </tr>
+                        `,
+                          )
+                          .join("")}
+                    </tbody>
+                </table>
+            </div>
+        `;
+  }
+
   // Show copied products
   if (validation.copied.length > 0) {
     html += `
