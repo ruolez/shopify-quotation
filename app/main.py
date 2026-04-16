@@ -76,31 +76,71 @@ def settings():
 # SHOPIFY STORES API
 # ============================================================================
 
+_STORE_SECRET_KEYS = ('oauth_client_secret', 'oauth_access_token', 'admin_api_token')
+
+
+def _strip_store_secrets(store: dict) -> dict:
+    """Remove secret fields from a store dict before returning it to clients.
+    admin_api_token is also stripped to avoid exposing legacy shpat_ values."""
+    return {k: v for k, v in store.items() if k not in _STORE_SECRET_KEYS}
+
+
 @app.route('/api/stores', methods=['GET'])
 def get_stores():
-    """Get all Shopify stores"""
+    """Get all Shopify stores (secrets stripped)."""
     try:
         stores = postgres.get_shopify_stores(active_only=False)
+        stores = [_strip_store_secrets(s) for s in stores]
         return jsonify({'success': True, 'stores': stores})
     except Exception as e:
         logger.error(f"Failed to get stores: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _validate_store_payload(data: dict, require_credentials: bool):
+    """Returns (auth_method, kwargs_for_manager) or raises ValueError."""
+    auth_method = data.get('auth_method') or 'legacy_token'
+    if auth_method not in ('legacy_token', 'oauth_client_credentials'):
+        raise ValueError(f"Invalid auth_method: {auth_method}")
+
+    kwargs = {
+        'name': data.get('name'),
+        'shop_url': data.get('shop_url'),
+        'auth_method': auth_method,
+    }
+
+    if auth_method == 'legacy_token':
+        api_token = data.get('api_token')
+        if require_credentials and not api_token:
+            raise ValueError("Legacy auth requires api_token")
+        if api_token:
+            kwargs['api_token'] = api_token
+    else:  # oauth_client_credentials
+        client_id = data.get('oauth_client_id')
+        client_secret = data.get('oauth_client_secret')
+        if require_credentials and not (client_id and client_secret):
+            raise ValueError("OAuth auth requires oauth_client_id and oauth_client_secret")
+        if client_id:
+            kwargs['oauth_client_id'] = client_id
+        if client_secret:
+            kwargs['oauth_client_secret'] = client_secret
+
+    return kwargs
+
+
 @app.route('/api/stores', methods=['POST'])
 def create_store():
-    """Create new Shopify store"""
+    """Create new Shopify store (legacy token OR OAuth client credentials)."""
     try:
-        data = request.get_json()
-        name = data.get('name')
-        shop_url = data.get('shop_url')
-        api_token = data.get('api_token')
+        data = request.get_json() or {}
+        if not data.get('name') or not data.get('shop_url'):
+            return jsonify({'success': False, 'error': 'Missing name or shop_url'}), 400
 
-        if not all([name, shop_url, api_token]):
-            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
-
-        store_id = postgres.create_shopify_store(name, shop_url, api_token)
+        kwargs = _validate_store_payload(data, require_credentials=True)
+        store_id = postgres.create_shopify_store(**kwargs)
         return jsonify({'success': True, 'store_id': store_id})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.error(f"Failed to create store: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -108,15 +148,16 @@ def create_store():
 
 @app.route('/api/stores/<int:store_id>', methods=['PUT'])
 def update_store(store_id):
-    """Update Shopify store"""
+    """Update Shopify store. Credentials are only touched if supplied."""
     try:
-        data = request.get_json()
-        name = data.get('name')
-        shop_url = data.get('shop_url')
-        api_token = data.get('api_token')
-
-        affected = postgres.update_shopify_store(store_id, name, shop_url, api_token)
+        data = request.get_json() or {}
+        kwargs = _validate_store_payload(data, require_credentials=False)
+        # Drop None name/shop_url so they don't clobber existing values
+        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        affected = postgres.update_shopify_store(store_id, **kwargs)
         return jsonify({'success': True, 'affected_rows': affected})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.error(f"Failed to update store: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -135,18 +176,50 @@ def delete_store(store_id):
 
 @app.route('/api/stores/<int:store_id>/test', methods=['POST'])
 def test_store_connection(store_id):
-    """Test Shopify store connection"""
+    """Test a saved Shopify store's connection (legacy or OAuth)."""
     try:
         store = postgres.get_shopify_store(store_id)
         if not store:
             return jsonify({'success': False, 'error': 'Store not found'}), 404
 
-        client = ShopifyClient(store['shop_url'], store['admin_api_token'])
+        client = ShopifyClient(store, postgres_mgr=postgres)
         success, message = client.test_connection()
 
         return jsonify({'success': success, 'message': message})
     except Exception as e:
         logger.error(f"Connection test failed: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/stores/oauth/test', methods=['POST'])
+def test_oauth_credentials():
+    """Test OAuth Client ID + Secret BEFORE saving a store.
+    Performs a one-shot client_credentials exchange plus a shop query."""
+    try:
+        data = request.get_json() or {}
+        shop_url = data.get('shop_url')
+        client_id = data.get('oauth_client_id')
+        client_secret = data.get('oauth_client_secret')
+
+        if not all([shop_url, client_id, client_secret]):
+            return jsonify({
+                'success': False,
+                'message': 'shop_url, oauth_client_id, and oauth_client_secret are required',
+            }), 400
+
+        ephemeral_store = {
+            'id': None,
+            'shop_url': shop_url,
+            'auth_method': 'oauth_client_credentials',
+            'oauth_client_id': client_id,
+            'oauth_client_secret': client_secret,
+        }
+        # No postgres_mgr: we don't want to persist a token for an unsaved store
+        client = ShopifyClient(ephemeral_store)
+        success, message = client.test_connection()
+        return jsonify({'success': success, 'message': message})
+    except Exception as e:
+        logger.error(f"OAuth credential test failed: {str(e)}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
@@ -345,7 +418,7 @@ def get_orders():
             return jsonify({'success': False, 'error': 'Store not found'}), 404
 
         # Check if already transferred
-        client = ShopifyClient(store['shop_url'], store['admin_api_token'])
+        client = ShopifyClient(store, postgres_mgr=postgres)
         result = client.get_unfulfilled_orders(days_back=days_back)
 
         orders = result['orders']
@@ -383,7 +456,7 @@ def validate_order_products():
         if not store:
             return jsonify({'success': False, 'error': 'Store not found'}), 404
 
-        client = ShopifyClient(store['shop_url'], store['admin_api_token'])
+        client = ShopifyClient(store, postgres_mgr=postgres)
         order = client.get_order_by_id(order_id)
 
         if not order:
@@ -436,7 +509,7 @@ def transfer_orders():
         exclusion_prefixes = [e['prefix'] for e in exclusions]
 
         # Initialize managers
-        client = ShopifyClient(store['shop_url'], store['admin_api_token'])
+        client = ShopifyClient(store, postgres_mgr=postgres)
         backoffice, inventory = get_sqlserver_managers()
         validator = ProductValidator(backoffice, inventory)
         converter = QuotationConverter(backoffice, postgres)

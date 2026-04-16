@@ -12,7 +12,17 @@ CREATE TABLE IF NOT EXISTS shopify_stores (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE,
     shop_url VARCHAR(255) NOT NULL,
-    admin_api_token TEXT NOT NULL,
+    -- Legacy auth: shpat_ token pasted from Shopify admin (pre-2026 custom apps).
+    -- Nullable because OAuth stores leave it empty. Stored plaintext for back-compat;
+    -- new OAuth credentials below are Fernet-encrypted.
+    admin_api_token TEXT,
+    -- OAuth 2.0 client_credentials auth (Shopify Dev Dashboard apps, 2026+)
+    auth_method VARCHAR(30) NOT NULL DEFAULT 'legacy_token'
+        CHECK (auth_method IN ('legacy_token', 'oauth_client_credentials')),
+    oauth_client_id TEXT,
+    oauth_client_secret_encrypted TEXT,
+    oauth_access_token_encrypted TEXT,
+    oauth_token_expires_at TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

@@ -111,41 +111,63 @@ class PostgreSQLManager:
     # Shopify Stores CRUD
     # ========================================================================
 
+    _STORE_COLUMNS = """
+        id, name, shop_url, admin_api_token, auth_method,
+        oauth_client_id, oauth_client_secret_encrypted,
+        oauth_access_token_encrypted, oauth_token_expires_at,
+        is_active, created_at, updated_at
+    """
+
+    def _decrypt_store_row(self, row: Dict) -> Dict:
+        """Decrypt OAuth secret/token on a store row and drop the _encrypted keys."""
+        secret_enc = row.pop('oauth_client_secret_encrypted', None)
+        token_enc = row.pop('oauth_access_token_encrypted', None)
+        row['oauth_client_secret'] = self.encryption.decrypt(secret_enc) if secret_enc else None
+        row['oauth_access_token'] = self.encryption.decrypt(token_enc) if token_enc else None
+        return row
+
     def get_shopify_stores(self, active_only: bool = True) -> List[Dict]:
-        """Get all Shopify stores"""
-        query = """
-            SELECT id, name, shop_url, admin_api_token, is_active,
-                   created_at, updated_at
-            FROM shopify_stores
-        """
+        """Get all Shopify stores with OAuth secrets decrypted."""
+        query = f"SELECT {self._STORE_COLUMNS} FROM shopify_stores"
         if active_only:
             query += " WHERE is_active = TRUE"
         query += " ORDER BY name"
-        return self.execute_query(query)
+        return [self._decrypt_store_row(row) for row in self.execute_query(query)]
 
     def get_shopify_store(self, store_id: int) -> Optional[Dict]:
-        """Get single Shopify store by ID"""
-        query = """
-            SELECT id, name, shop_url, admin_api_token, is_active,
-                   created_at, updated_at
-            FROM shopify_stores
-            WHERE id = %s
-        """
+        """Get single Shopify store by ID with OAuth secrets decrypted."""
+        query = f"SELECT {self._STORE_COLUMNS} FROM shopify_stores WHERE id = %s"
         results = self.execute_query(query, (store_id,))
-        return results[0] if results else None
+        return self._decrypt_store_row(results[0]) if results else None
 
-    def create_shopify_store(self, name: str, shop_url: str, api_token: str) -> int:
-        """Create new Shopify store"""
+    def create_shopify_store(self, name: str, shop_url: str,
+                             auth_method: str = 'legacy_token',
+                             api_token: Optional[str] = None,
+                             oauth_client_id: Optional[str] = None,
+                             oauth_client_secret: Optional[str] = None) -> int:
+        """Create new Shopify store. Encrypts oauth_client_secret before insert."""
+        secret_enc = self.encryption.encrypt(oauth_client_secret) if oauth_client_secret else None
         query = """
-            INSERT INTO shopify_stores (name, shop_url, admin_api_token)
-            VALUES (%s, %s, %s)
+            INSERT INTO shopify_stores
+                (name, shop_url, auth_method, admin_api_token,
+                 oauth_client_id, oauth_client_secret_encrypted)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING id
         """
-        return self.execute_insert(query, (name, shop_url, api_token))
+        return self.execute_insert(query, (
+            name, shop_url, auth_method, api_token,
+            oauth_client_id, secret_enc,
+        ))
 
     def update_shopify_store(self, store_id: int, name: str = None,
-                            shop_url: str = None, api_token: str = None) -> int:
-        """Update Shopify store"""
+                             shop_url: str = None,
+                             auth_method: Optional[str] = None,
+                             api_token: Optional[str] = None,
+                             oauth_client_id: Optional[str] = None,
+                             oauth_client_secret: Optional[str] = None) -> int:
+        """Partial update. Only fields that are not None are touched.
+        Encrypts oauth_client_secret. When switching auth_method, caller is
+        expected to also supply the relevant credentials."""
         updates = []
         params = []
 
@@ -155,20 +177,43 @@ class PostgreSQLManager:
         if shop_url is not None:
             updates.append("shop_url = %s")
             params.append(shop_url)
+        if auth_method is not None:
+            updates.append("auth_method = %s")
+            params.append(auth_method)
         if api_token is not None:
             updates.append("admin_api_token = %s")
             params.append(api_token)
+        if oauth_client_id is not None:
+            updates.append("oauth_client_id = %s")
+            params.append(oauth_client_id)
+        if oauth_client_secret is not None:
+            updates.append("oauth_client_secret_encrypted = %s")
+            params.append(self.encryption.encrypt(oauth_client_secret))
+            # A secret rotation invalidates the cached access token.
+            updates.append("oauth_access_token_encrypted = NULL")
+            updates.append("oauth_token_expires_at = NULL")
 
         if not updates:
             return 0
 
         params.append(store_id)
-        query = f"""
+        query = f"UPDATE shopify_stores SET {', '.join(updates)} WHERE id = %s"
+        return self.execute_update(query, tuple(params))
+
+    def update_shopify_oauth_token(self, store_id: int,
+                                   access_token: str, expires_at) -> int:
+        """Persist a freshly-minted OAuth access token. Called by ShopifyClient."""
+        query = """
             UPDATE shopify_stores
-            SET {', '.join(updates)}
+            SET oauth_access_token_encrypted = %s,
+                oauth_token_expires_at = %s
             WHERE id = %s
         """
-        return self.execute_update(query, tuple(params))
+        return self.execute_update(query, (
+            self.encryption.encrypt(access_token),
+            expires_at,
+            store_id,
+        ))
 
     def delete_shopify_store(self, store_id: int) -> int:
         """Delete Shopify store"""

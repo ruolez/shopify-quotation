@@ -51,6 +51,14 @@ function setupEventListeners() {
   document
     .getElementById("cancelStoreModal")
     .addEventListener("click", closeStoreModal);
+  document
+    .getElementById("testOAuthCredentialsBtn")
+    .addEventListener("click", testOAuthCredentials);
+  document
+    .querySelectorAll('input[name="auth_method"]')
+    .forEach((radio) =>
+      radio.addEventListener("change", syncAuthMethodFields),
+    );
 
   // SQL connections
   document.getElementById("backofficeForm").addEventListener("submit", (e) => {
@@ -122,8 +130,11 @@ function renderStores() {
   }
 
   container.innerHTML = state.stores
-    .map(
-      (store) => `
+    .map((store) => {
+      const isOAuth = store.auth_method === "oauth_client_credentials";
+      const authLabel = isOAuth ? "OAuth" : "Legacy";
+      const authBadgeClass = isOAuth ? "badge-success" : "badge-warning";
+      return `
         <div class="card mt-2" style="padding: 16px; background: var(--background-alt);">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
@@ -133,6 +144,9 @@ function renderStores() {
                     </p>
                     <span class="badge ${store.is_active ? "badge-success" : "badge-error"}">
                         ${store.is_active ? "Active" : "Inactive"}
+                    </span>
+                    <span class="badge ${authBadgeClass}" title="${isOAuth ? "Dev Dashboard OAuth (client credentials)" : "Deprecated shpat_ token"}">
+                        ${authLabel}
                     </span>
                 </div>
                 <div class="table-actions">
@@ -148,14 +162,39 @@ function renderStores() {
                 </div>
             </div>
         </div>
-    `,
-    )
+    `;
+    })
     .join("");
+}
+
+function getSelectedAuthMethod() {
+  const checked = document.querySelector('input[name="auth_method"]:checked');
+  return checked ? checked.value : "oauth_client_credentials";
+}
+
+function setSelectedAuthMethod(method) {
+  const radio = document.querySelector(
+    `input[name="auth_method"][value="${method}"]`,
+  );
+  if (radio) radio.checked = true;
+  syncAuthMethodFields();
+}
+
+function syncAuthMethodFields() {
+  const method = getSelectedAuthMethod();
+  document.getElementById("oauthFields").style.display =
+    method === "oauth_client_credentials" ? "" : "none";
+  document.getElementById("legacyFields").style.display =
+    method === "legacy_token" ? "" : "none";
 }
 
 function openStoreModal(storeId = null) {
   const modal = document.getElementById("storeModal");
   const title = document.getElementById("storeModalTitle");
+  const form = document.getElementById("storeForm");
+
+  form.reset();
+  document.getElementById("store_id").value = "";
 
   if (storeId) {
     const store = state.stores.find((s) => s.id === storeId);
@@ -164,12 +203,15 @@ function openStoreModal(storeId = null) {
       document.getElementById("store_id").value = store.id;
       document.getElementById("store_name").value = store.name;
       document.getElementById("shop_url").value = store.shop_url;
-      document.getElementById("api_token").value = store.admin_api_token;
+      setSelectedAuthMethod(store.auth_method || "legacy_token");
+      // Secrets are never returned by the API — leave the fields blank on edit.
+      // Client ID is non-secret and is returned, so we can show it.
+      document.getElementById("oauth_client_id").value =
+        store.oauth_client_id || "";
     }
   } else {
     title.textContent = "Add Shopify Store";
-    document.getElementById("storeForm").reset();
-    document.getElementById("store_id").value = "";
+    setSelectedAuthMethod("oauth_client_credentials");
   }
 
   modal.classList.add("active");
@@ -183,11 +225,33 @@ async function saveStore() {
   const storeId = document.getElementById("store_id").value;
   const name = document.getElementById("store_name").value.trim();
   const shopUrl = document.getElementById("shop_url").value.trim();
-  const apiToken = document.getElementById("api_token").value.trim();
+  const authMethod = getSelectedAuthMethod();
 
-  if (!name || !shopUrl || !apiToken) {
-    showToast("Please fill all fields", "warning");
+  if (!name || !shopUrl) {
+    showToast("Please fill name and shop URL", "warning");
     return;
+  }
+
+  const payload = { name, shop_url: shopUrl, auth_method: authMethod };
+
+  if (authMethod === "legacy_token") {
+    const apiToken = document.getElementById("api_token").value.trim();
+    if (!storeId && !apiToken) {
+      showToast("Admin API token is required", "warning");
+      return;
+    }
+    if (apiToken) payload.api_token = apiToken;
+  } else {
+    const clientId = document.getElementById("oauth_client_id").value.trim();
+    const clientSecret = document
+      .getElementById("oauth_client_secret")
+      .value.trim();
+    if (!storeId && (!clientId || !clientSecret)) {
+      showToast("Client ID and Client Secret are required", "warning");
+      return;
+    }
+    if (clientId) payload.oauth_client_id = clientId;
+    if (clientSecret) payload.oauth_client_secret = clientSecret;
   }
 
   try {
@@ -197,7 +261,7 @@ async function saveStore() {
     const response = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, shop_url: shopUrl, api_token: apiToken }),
+      body: JSON.stringify(payload),
     });
 
     const data = await response.json();
@@ -217,6 +281,43 @@ async function saveStore() {
   } catch (error) {
     console.error("Failed to save store:", error);
     showToast("Failed to save store: " + error.message, "error");
+  }
+}
+
+async function testOAuthCredentials() {
+  const shopUrl = document.getElementById("shop_url").value.trim();
+  const clientId = document.getElementById("oauth_client_id").value.trim();
+  const clientSecret = document
+    .getElementById("oauth_client_secret")
+    .value.trim();
+
+  if (!shopUrl || !clientId || !clientSecret) {
+    showToast(
+      "Shop URL, Client ID, and Client Secret are required to test",
+      "warning",
+    );
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/stores/oauth/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        shop_url: shopUrl,
+        oauth_client_id: clientId,
+        oauth_client_secret: clientSecret,
+      }),
+    });
+    const data = await response.json();
+    if (data.success) {
+      showToast("✓ " + data.message, "success");
+    } else {
+      showToast("✗ " + data.message, "error");
+    }
+  } catch (error) {
+    console.error("OAuth credential test failed:", error);
+    showToast("OAuth credential test failed: " + error.message, "error");
   }
 }
 

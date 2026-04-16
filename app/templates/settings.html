@@ -180,10 +180,45 @@
                         <input type="text" id="shop_url" placeholder="mystore.myshopify.com" required>
                         <small>Enter your shop URL (without https://)</small>
                     </div>
+
                     <div class="form-group">
-                        <label for="api_token">Admin API Access Token</label>
-                        <input type="password" id="api_token" placeholder="shpat_..." required>
-                        <small>Create a custom app in Shopify Admin to get this token</small>
+                        <label>Authentication Method</label>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <label style="font-weight: normal;">
+                                <input type="radio" name="auth_method" value="oauth_client_credentials" checked>
+                                OAuth (Dev Dashboard) — required for new stores as of Jan 2026
+                            </label>
+                            <label style="font-weight: normal;">
+                                <input type="radio" name="auth_method" value="legacy_token">
+                                Legacy Admin API Token — for existing shpat_ stores
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="oauthFields">
+                        <div class="form-group">
+                            <label for="oauth_client_id">Client ID</label>
+                            <input type="text" id="oauth_client_id" placeholder="Paste from Dev Dashboard" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label for="oauth_client_secret">Client Secret</label>
+                            <input type="password" id="oauth_client_secret" placeholder="Paste from Dev Dashboard" autocomplete="off">
+                            <small>Shopify Dev Dashboard → your app → Client credentials. Leave blank when editing to keep the existing secret.</small>
+                        </div>
+                        <div class="form-group">
+                            <button type="button" class="btn btn-small btn-secondary" id="testOAuthCredentialsBtn">
+                                🔌 Test Credentials
+                            </button>
+                            <small style="display: block; margin-top: 6px;">Validates Client ID/Secret against Shopify without saving the store.</small>
+                        </div>
+                    </div>
+
+                    <div id="legacyFields" style="display: none;">
+                        <div class="form-group">
+                            <label for="api_token">Admin API Access Token</label>
+                            <input type="password" id="api_token" placeholder="shpat_..." autocomplete="off">
+                            <small>Legacy custom-app token. Leave blank when editing to keep the existing token.</small>
+                        </div>
                     </div>
                 </form>
             </div>

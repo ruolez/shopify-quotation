@@ -1,68 +1,197 @@
 """
 Shopify GraphQL API Client
-Fetches orders from Shopify stores using Admin API
+Fetches orders from Shopify stores using Admin API.
+
+Supports two authentication methods:
+  - legacy_token: pasted shpat_... custom-app token (pre-2026 stores)
+  - oauth_client_credentials: Dev Dashboard Client ID + Secret exchanged via
+    POST {shop}/admin/oauth/access_token for a ~24h access token, cached in DB
 """
 
 import logging
-from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Union
+from datetime import datetime, timedelta, timezone
 import requests
 
 logger = logging.getLogger(__name__)
 
 
+def _normalize_shop_url(shop_url: str) -> str:
+    """Strip scheme, add .myshopify.com if missing."""
+    clean = shop_url.replace('https://', '').replace('http://', '').strip('/')
+    if not clean.endswith('.myshopify.com') and '.' not in clean:
+        clean = f"{clean}.myshopify.com"
+    return clean
+
+
 class ShopifyClient:
-    """Shopify Admin API GraphQL client"""
+    """Shopify Admin API GraphQL client with dual auth support."""
 
-    def __init__(self, shop_url: str, api_token: str):
+    # Refresh tokens this many seconds before the stated expiry to avoid
+    # racing the server clock.
+    _TOKEN_REFRESH_SAFETY_MARGIN = 60
+
+    def __init__(self, store: Union[Dict, str], postgres_mgr=None,
+                 api_token: Optional[str] = None):
         """
-        Initialize Shopify client
-
         Args:
-            shop_url: Shopify store URL (e.g., 'mystore.myshopify.com')
-            api_token: Admin API access token
+            store: Either a store dict (preferred) or a shop_url string.
+                   A dict contains at least 'shop_url' and 'auth_method'.
+            postgres_mgr: PostgreSQLManager, required for OAuth stores so the
+                          client can persist refreshed tokens.
+            api_token: Legacy positional compat - only used if `store` is a string.
         """
-        self.shop_url = shop_url.replace('https://', '').replace('http://', '')
-        if not self.shop_url.endswith('.myshopify.com'):
-            if '.' not in self.shop_url:
-                self.shop_url = f"{self.shop_url}.myshopify.com"
+        if isinstance(store, str):
+            # Back-compat: ShopifyClient(shop_url, api_token)
+            self._store = {
+                'id': None,
+                'shop_url': store,
+                'auth_method': 'legacy_token',
+                'admin_api_token': api_token,
+            }
+        else:
+            self._store = dict(store)
 
-        self.api_token = api_token
+        self.store_id = self._store.get('id')
+        self.shop_url = _normalize_shop_url(self._store['shop_url'])
+        self.auth_method = self._store.get('auth_method') or 'legacy_token'
+        self.postgres = postgres_mgr
         self.graphql_url = f"https://{self.shop_url}/admin/api/2024-01/graphql.json"
-        self.headers = {
-            'Content-Type': 'application/json',
-            'X-Shopify-Access-Token': self.api_token
-        }
 
-    def _execute_query(self, query: str, variables: Dict = None) -> Dict:
-        """Execute GraphQL query"""
+    # ------------------------------------------------------------------
+    # Auth
+    # ------------------------------------------------------------------
+
+    def _get_access_token(self) -> str:
+        """Return a valid Admin API access token, refreshing OAuth if needed."""
+        if self.auth_method == 'legacy_token':
+            token = self._store.get('admin_api_token')
+            if not token:
+                raise Exception("Legacy store is missing admin_api_token")
+            return token
+
+        if self.auth_method == 'oauth_client_credentials':
+            cached = self._store.get('oauth_access_token')
+            expires_at = self._store.get('oauth_token_expires_at')
+            if cached and expires_at and self._token_still_fresh(expires_at):
+                return cached
+            return self._refresh_oauth_token()
+
+        raise Exception(f"Unknown auth_method: {self.auth_method}")
+
+    def _token_still_fresh(self, expires_at) -> bool:
+        """Check a cached token's expiry with a safety margin."""
+        if isinstance(expires_at, str):
+            expires_at = datetime.fromisoformat(expires_at)
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        cutoff = datetime.now(timezone.utc) + timedelta(
+            seconds=self._TOKEN_REFRESH_SAFETY_MARGIN)
+        return expires_at > cutoff
+
+    def _refresh_oauth_token(self) -> str:
+        """Exchange Client ID + Client Secret for a fresh access token."""
+        client_id = self._store.get('oauth_client_id')
+        client_secret = self._store.get('oauth_client_secret')
+        if not client_id or not client_secret:
+            raise Exception("OAuth store is missing client_id or client_secret")
+
+        url = f"https://{self.shop_url}/admin/oauth/access_token"
         try:
-            payload = {'query': query}
-            if variables:
-                payload['variables'] = variables
+            resp = requests.post(
+                url,
+                data={
+                    'grant_type': 'client_credentials',
+                    'client_id': client_id,
+                    'client_secret': client_secret,
+                },
+                headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                timeout=30,
+            )
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Failed to reach Shopify OAuth endpoint: {e}")
 
-            response = requests.post(
-                self.graphql_url,
-                json=payload,
-                headers=self.headers,
-                timeout=30
+        if resp.status_code != 200:
+            raise Exception(
+                f"Shopify OAuth token exchange failed ({resp.status_code}): "
+                f"{resp.text[:500]}"
             )
 
-            response.raise_for_status()
-            result = response.json()
+        payload = resp.json()
+        access_token = payload.get('access_token')
+        if not access_token:
+            raise Exception(f"Shopify OAuth response missing access_token: {payload}")
 
+        # expires_in is seconds; default to 23h if Shopify ever omits it
+        expires_in = int(payload.get('expires_in', 23 * 3600))
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+
+        self._store['oauth_access_token'] = access_token
+        self._store['oauth_token_expires_at'] = expires_at
+
+        if self.postgres and self.store_id is not None:
+            try:
+                self.postgres.update_shopify_oauth_token(
+                    self.store_id, access_token, expires_at)
+            except Exception as e:
+                # Non-fatal: token still usable for this process lifetime
+                logger.warning(f"Failed to persist refreshed OAuth token: {e}")
+
+        logger.info(f"Refreshed Shopify OAuth token for {self.shop_url} "
+                    f"(expires at {expires_at.isoformat()})")
+        return access_token
+
+    def _build_headers(self) -> Dict[str, str]:
+        return {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': self._get_access_token(),
+        }
+
+    # ------------------------------------------------------------------
+    # Query execution
+    # ------------------------------------------------------------------
+
+    def _execute_query(self, query: str, variables: Dict = None) -> Dict:
+        """Execute GraphQL query. Retries once on 401 for OAuth stores."""
+        payload = {'query': query}
+        if variables:
+            payload['variables'] = variables
+
+        attempt_refresh = self.auth_method == 'oauth_client_credentials'
+
+        for attempt in range(2):
+            try:
+                response = requests.post(
+                    self.graphql_url,
+                    json=payload,
+                    headers=self._build_headers(),
+                    timeout=30,
+                )
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Shopify API request failed: {e}")
+                raise Exception(f"Failed to connect to Shopify: {e}")
+
+            if response.status_code == 401 and attempt_refresh and attempt == 0:
+                logger.info(f"Shopify returned 401 for {self.shop_url}; "
+                            f"invalidating cached OAuth token and retrying")
+                self._store['oauth_token_expires_at'] = None
+                self._store['oauth_access_token'] = None
+                continue
+
+            try:
+                response.raise_for_status()
+            except requests.exceptions.HTTPError as e:
+                body = response.text[:500] if response is not None else ''
+                raise Exception(f"Shopify HTTP error: {e} - {body}")
+
+            result = response.json()
             if 'errors' in result:
-                error_messages = [err.get('message', 'Unknown error') for err in result['errors']]
-                raise Exception(f"GraphQL errors: {', '.join(error_messages)}")
+                messages = [err.get('message', 'Unknown error') for err in result['errors']]
+                raise Exception(f"GraphQL errors: {', '.join(messages)}")
 
             return result.get('data', {})
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Shopify API request failed: {str(e)}")
-            raise Exception(f"Failed to connect to Shopify: {str(e)}")
-        except Exception as e:
-            logger.error(f"Shopify GraphQL error: {str(e)}")
-            raise
+        raise Exception("Shopify request failed after retry")
 
     def _fetch_all_line_items(self, order_gid: str) -> List[Dict]:
         """Fetch all line items for an order using cursor pagination"""
