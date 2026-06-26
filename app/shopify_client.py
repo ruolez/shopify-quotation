@@ -292,7 +292,7 @@ class ShopifyClient:
             {{
                 orders(
                     first: {limit},
-                    query: "created_at:>'{date_filter}' AND fulfillment_status:unfulfilled"
+                    query: "created_at:>'{date_filter}' AND fulfillment_status:unfulfilled AND status:open"
                     {after_clause}
                 ) {{
                     pageInfo {{
@@ -306,6 +306,8 @@ class ShopifyClient:
                             name
                             createdAt
                             displayFulfillmentStatus
+                            cancelledAt
+                            cancelReason
                             note
                             totalPriceSet {{
                                 shopMoney {{
@@ -458,6 +460,9 @@ class ShopifyClient:
             'name': order_node.get('name', ''),
             'created_at': order_node.get('createdAt', ''),
             'fulfillment_status': order_node.get('displayFulfillmentStatus', ''),
+            'cancelled': order_node.get('cancelledAt') is not None,  # True if order was cancelled
+            'cancelled_at': order_node.get('cancelledAt'),  # Cancellation timestamp - can be None
+            'cancel_reason': order_node.get('cancelReason'),  # Can be None
             'note': order_node.get('note'),  # Staff note - can be None
             'total_amount': total_amount,
             'currency': currency,
@@ -510,6 +515,8 @@ class ShopifyClient:
                     name
                     createdAt
                     displayFulfillmentStatus
+                    cancelledAt
+                    cancelReason
                     note
                     totalPriceSet {{
                         shopMoney {{

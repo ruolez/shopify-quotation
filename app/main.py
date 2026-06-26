@@ -421,7 +421,9 @@ def get_orders():
         client = ShopifyClient(store, postgres_mgr=postgres)
         result = client.get_unfulfilled_orders(days_back=days_back)
 
-        orders = result['orders']
+        # Defensively drop cancelled orders (the Shopify query already filters
+        # by status:open, this guarantees they never reach the frontend)
+        orders = [o for o in result['orders'] if not o.get('cancelled')]
 
         # Mark orders that have been transferred
         for order in orders:
