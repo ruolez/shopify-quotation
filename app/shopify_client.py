@@ -421,10 +421,10 @@ class ShopifyClient:
                     'id': item_node.get('id', ''),
                     'name': item_node.get('name', ''),
                     'quantity': item_node.get('quantity', 1),
-                    'barcode': variant.get('barcode', ''),
-                    'sku': variant.get('sku', ''),
+                    'barcode': variant.get('barcode') or '',
+                    'sku': variant.get('sku') or '',
                     'price': float(variant.get('price') or 0),
-                    'variant_title': variant.get('title', ''),
+                    'variant_title': variant.get('title') or '',
                     'product_id': product.get('id', ''),
                     'product_title': product.get('title', '')
                 })
@@ -440,10 +440,10 @@ class ShopifyClient:
                     'id': item_node.get('id', ''),
                     'name': item_node.get('name', ''),
                     'quantity': item_node.get('quantity', 1),
-                    'barcode': variant.get('barcode', ''),
-                    'sku': variant.get('sku', ''),
+                    'barcode': variant.get('barcode') or '',
+                    'sku': variant.get('sku') or '',
                     'price': float(variant.get('price') or 0),
-                    'variant_title': variant.get('title', ''),
+                    'variant_title': variant.get('title') or '',
                     'product_id': product.get('id', ''),
                     'product_title': product.get('title', '')
                 })

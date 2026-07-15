@@ -113,7 +113,7 @@ class ProductValidator:
         items_without_barcode = []
 
         for item in items_to_validate:
-            barcode = item.get('barcode', '').strip()
+            barcode = (item.get('barcode') or '').strip()
 
             if not barcode:
                 items_without_barcode.append(item)
