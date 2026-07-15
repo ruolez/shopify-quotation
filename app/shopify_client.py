@@ -214,6 +214,7 @@ class ShopifyClient:
                                 id
                                 name
                                 quantity
+                                currentQuantity
                                 variant {{
                                     id
                                     barcode
@@ -345,6 +346,7 @@ class ShopifyClient:
                                         id
                                         name
                                         quantity
+                                        currentQuantity
                                         variant {{
                                             id
                                             barcode
@@ -395,6 +397,19 @@ class ShopifyClient:
             logger.error(f"Failed to fetch orders: {str(e)}")
             raise
 
+    @staticmethod
+    def _effective_quantity(item_node: Dict) -> int:
+        """Return the line's current quantity after Shopify edits/refunds.
+
+        currentQuantity reflects removals/refunds (0 = fully removed, which is
+        filtered out upstream); fall back to the original quantity if the field
+        is missing.
+        """
+        current = item_node.get('currentQuantity')
+        if current is not None:
+            return current
+        return item_node.get('quantity', 1)
+
     def _parse_order(self, order_node: Dict, all_line_items: List[Dict] = None) -> Dict:
         """Parse Shopify order node into simplified structure
 
@@ -414,13 +429,18 @@ class ShopifyClient:
         if all_line_items is not None:
             # Use pre-fetched line items (from pagination)
             for item_node in all_line_items:
+                # Skip lines removed via Shopify order editing/refunds
+                # (currentQuantity drops to 0 while quantity keeps the original)
+                if item_node.get('currentQuantity') == 0:
+                    continue
+
                 variant = item_node.get('variant') or {}
                 product = variant.get('product') or {}
 
                 line_items.append({
                     'id': item_node.get('id', ''),
                     'name': item_node.get('name', ''),
-                    'quantity': item_node.get('quantity', 1),
+                    'quantity': self._effective_quantity(item_node),
                     'barcode': variant.get('barcode') or '',
                     'sku': variant.get('sku') or '',
                     'price': float(variant.get('price') or 0),
@@ -433,13 +453,18 @@ class ShopifyClient:
             line_items_data = order_node.get('lineItems') or {}
             for item_edge in line_items_data.get('edges') or []:
                 item_node = item_edge.get('node') or {}
+                # Skip lines removed via Shopify order editing/refunds
+                # (currentQuantity drops to 0 while quantity keeps the original)
+                if item_node.get('currentQuantity') == 0:
+                    continue
+
                 variant = item_node.get('variant') or {}
                 product = variant.get('product') or {}
 
                 line_items.append({
                     'id': item_node.get('id', ''),
                     'name': item_node.get('name', ''),
-                    'quantity': item_node.get('quantity', 1),
+                    'quantity': self._effective_quantity(item_node),
                     'barcode': variant.get('barcode') or '',
                     'sku': variant.get('sku') or '',
                     'price': float(variant.get('price') or 0),
@@ -554,6 +579,7 @@ class ShopifyClient:
                                 id
                                 name
                                 quantity
+                                currentQuantity
                                 variant {{
                                     id
                                     barcode
