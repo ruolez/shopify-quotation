@@ -335,6 +335,18 @@ def get_customers_list():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/sales-reps', methods=['GET'])
+def get_sales_reps():
+    """Get list of employees (sales reps) from BackOffice for dropdown"""
+    try:
+        backoffice, _ = get_sqlserver_managers()
+        reps = backoffice.get_sales_reps_list()
+        return jsonify({'success': True, 'sales_reps': reps})
+    except Exception as e:
+        logger.error(f"Failed to get sales reps list: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/customers/search', methods=['GET'])
 def search_customers():
     """Search customers by AccountNo for autocomplete"""

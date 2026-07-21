@@ -669,6 +669,15 @@ class SQLServerManager:
         """
         return self.execute_query(query)
 
+    def get_sales_reps_list(self) -> List[Dict]:
+        """Get list of employees (sales reps) for dropdown"""
+        query = """
+            SELECT EmployeeID, FirstName, LastName, EmployeeNo
+            FROM dbo.Employees_tbl
+            ORDER BY FirstName, LastName
+        """
+        return self.execute_query(query)
+
     def search_customers_by_account(self, query: str, limit: int = 10) -> List[Dict]:
         """
         Search Customers_tbl by AccountNo (partial match)

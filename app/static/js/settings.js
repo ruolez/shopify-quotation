@@ -586,6 +586,32 @@ async function renderQuotationDefaults() {
     return;
   }
 
+  // Fetch sales reps once for the dropdown. On failure (e.g. BackOffice not
+  // configured), fall back to a plain number input so the section still works.
+  let salesReps = null;
+  try {
+    const repsResponse = await fetch("/api/sales-reps");
+    const repsData = await repsResponse.json();
+    if (repsData.success) {
+      salesReps = repsData.sales_reps || [];
+    }
+  } catch (error) {
+    console.error("Failed to load sales reps:", error);
+  }
+
+  const salesRepField = (store, defaults) => {
+    if (salesReps === null) {
+      return `<input type="number" id="sales_rep_id_${store.id}" placeholder="Sales Rep ID" value="${defaults.sales_rep_id || ""}">`;
+    }
+    const options = salesReps
+      .map(
+        (rep) =>
+          `<option value="${rep.EmployeeID}" ${rep.EmployeeID === defaults.sales_rep_id ? "selected" : ""}>${rep.FirstName || ""} ${rep.LastName || ""}</option>`,
+      )
+      .join("");
+    return `<select id="sales_rep_id_${store.id}"><option value="">— None —</option>${options}</select>`;
+  };
+
   const html = await Promise.all(
     state.stores.map(async (store) => {
       // Get current defaults
@@ -605,8 +631,8 @@ async function renderQuotationDefaults() {
                     <input type="number" id="shipper_id_${store.id}" placeholder="Shipper ID" value="${defaults.shipper_id || ""}">
                 </div>
                 <div class="form-group">
-                    <label for="sales_rep_id_${store.id}">Sales Rep ID <span class="optional-label">(optional)</span></label>
-                    <input type="number" id="sales_rep_id_${store.id}" placeholder="Sales Rep ID" value="${defaults.sales_rep_id || ""}">
+                    <label for="sales_rep_id_${store.id}">Sales Rep <span class="optional-label">(optional)</span></label>
+                    ${salesRepField(store, defaults)}
                 </div>
                 <div class="form-group">
                     <label for="term_id_${store.id}">Term ID <span class="optional-label">(optional)</span></label>

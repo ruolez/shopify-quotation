@@ -184,8 +184,8 @@ class QuotationConverter:
             # Defaults from settings (with customer overrides where applicable)
             'Status': defaults.get('status', 1),
             'ShipperID': defaults.get('shipper_id'),
-            'SalesRepID': customer.get('SalesRepID') or defaults.get('sales_rep_id'),  # Use customer's rep, fallback to default
-            'TermID': customer.get('TermID') or defaults.get('term_id'),  # Use customer's terms, fallback to default
+            'SalesRepID': defaults.get('sales_rep_id') or customer.get('SalesRepID'),  # Use store default, fallback to customer's rep
+            'TermID': defaults.get('term_id') or customer.get('TermID'),  # Use store default, fallback to customer's terms
 
             # Will be updated with calculated total
             'QuotationTotal': 0,
